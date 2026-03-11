@@ -1,0 +1,11 @@
+# MIT-BIH Arrhythmia Database access
+wfdb>=4.1.0
+
+# Numerical computing
+numpy>=1.24.0
+
+# Kafka producer
+confluent-kafka>=2.3.0
+
+# Environment variables
+python-dotenv>=1.0.0
