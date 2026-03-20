@@ -8,6 +8,7 @@ namespace CardioFlow.Api.Controllers;
 [Route("api/alerts")]
 public class AlertsController : ControllerBase
 {
+    private static readonly HashSet<string> AllowedRecordIds = ["100", "101", "103"];
     private const int DefaultCount = 20;
     private const int MaxCount = 100;
     private readonly IAlertService _alertService;
@@ -20,7 +21,9 @@ public class AlertsController : ControllerBase
     }
 
     [HttpGet]
-    public ActionResult<IReadOnlyList<AlertMessage>> GetLatest([FromQuery] int count = DefaultCount)
+    public ActionResult<IReadOnlyList<AlertMessage>> GetLatest(
+        [FromQuery] int count = DefaultCount,
+        [FromQuery] string? recordId = null)
     {
         if (count < 1 || count > MaxCount)
         {
@@ -28,6 +31,15 @@ public class AlertsController : ControllerBase
             return BadRequest("count must be between 1 and 100");
         }
 
-        return Ok(_alertService.GetLatest(count));
+        if (!string.IsNullOrWhiteSpace(recordId) && !AllowedRecordIds.Contains(recordId.Trim()))
+        {
+            return BadRequest("recordId must be one of: 100, 101, 103");
+        }
+
+        var alerts = string.IsNullOrWhiteSpace(recordId)
+            ? _alertService.GetLatest(count)
+            : _alertService.GetLatestByRecord(count, recordId);
+
+        return Ok(alerts);
     }
 }

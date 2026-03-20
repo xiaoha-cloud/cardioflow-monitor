@@ -278,17 +278,29 @@ public class KafkaConsumerService : BackgroundService
             await TryBroadcastAsync("ReceiveTelemetry", telemetryMessage, cancellationToken);
 
             // Detect and store alerts based on telemetry payload.
-            var alerts = _anomalyDetectionService.DetectAlerts(telemetryMessage);
-            foreach (var alert in alerts)
+            try
             {
-                _alertService.AddAlert(alert);
-                await TryBroadcastAsync("ReceiveAlert", alert, cancellationToken);
-                _logger.LogInformation(
-                    "Alert generated: patientId={PatientId}, sampleIndex={SampleIndex}, severity={Severity}, message={Message}",
-                    alert.PatientId,
-                    alert.SampleIndex,
-                    alert.Severity,
-                    alert.Message);
+                var alerts = _anomalyDetectionService.DetectAlerts(telemetryMessage);
+                foreach (var alert in alerts)
+                {
+                    _alertService.AddAlert(alert);
+                    await TryBroadcastAsync("ReceiveAlert", alert, cancellationToken);
+                    _logger.LogInformation(
+                        "Alert generated: patientId={PatientId}, sampleIndex={SampleIndex}, annotation={Annotation}, severity={Severity}, message={Message}",
+                        alert.PatientId,
+                        alert.SampleIndex,
+                        alert.Annotation,
+                        alert.Severity,
+                        alert.Message);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Alert processing failed for sampleIndex={SampleIndex}, annotation={Annotation}. Telemetry consumption continues.",
+                    telemetryMessage.SampleIndex,
+                    telemetryMessage.Annotation);
             }
 
             _messagesConsumed++;
@@ -332,6 +344,7 @@ public class KafkaConsumerService : BackgroundService
     private SystemStatusDto BuildSystemStatus()
     {
         var latestTelemetry = _bufferService.GetLatest(1).FirstOrDefault();
+        var activeRecordId = _bufferService.GetLatestRecordId();
         var bufferCount = _bufferService.GetCount();
         var lastMessageAt = _bufferService.GetLastMessageAt();
         var now = DateTime.UtcNow;
@@ -350,6 +363,9 @@ public class KafkaConsumerService : BackgroundService
             SamplingRate = _configuration.GetValue<int>("Telemetry:SamplingRate", 360),
             Topic = _configuration["Kafka:TelemetryTopic"] ?? "ecg.telemetry",
             ActivePatient = latestTelemetry?.PatientId,
+            ActiveRecord = activeRecordId,
+            ActiveRecordId = activeRecordId,
+            DeviceId = latestTelemetry?.DeviceId,
             LastAlert = _alertService.GetLastAlert()?.Message,
             BufferCount = bufferCount,
             LastMessageAt = lastMessageAt

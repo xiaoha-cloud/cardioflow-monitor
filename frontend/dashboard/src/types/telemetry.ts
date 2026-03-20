@@ -12,8 +12,26 @@ export interface TelemetryMessage {
     battery: number;
 }
 
+export type SignalQuality = "good" | "fair" | "poor" | string;
+
+export interface ChartPoint {
+    x: number;
+    lead1: number;
+    timestamp: string;
+}
+
+export interface PatientSnapshot {
+    patientId: string;
+    recordId: string;
+    deviceId: string;
+    battery: number | null;
+    signalQuality: SignalQuality;
+    streamStatus: string;
+}
+
 export interface AlertMessage {
     patientId: string;
+    recordId?: string;
     deviceId: string;
     timestamp: string;
     sampleIndex: number;
@@ -28,6 +46,9 @@ export interface SystemStatus {
     samplingRate: number;
     topic: string;
     activePatient: string | null;
+    activeRecord?: string | null;
+    activeRecordId?: string | null;
+    deviceId?: string | null;
     lastAlert: string | null;
     bufferCount: number;
     lastMessageAt: string | null;

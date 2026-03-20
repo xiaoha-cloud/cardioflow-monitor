@@ -1,37 +1,141 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import AlertPanel from "../components/AlertPanel";
 import EcgChart from "../components/EcgChart";
+import EventLogViewer from "../components/EventLogViewer";
+import PatientCard from "../components/PatientCard";
 import SummaryCards from "../components/SummaryCards";
-import { getAlerts, getLatestEcg, getSystemStatus } from "../services/api";
+import { getAlerts, getCurrentPatient, getLatestEcg, getSystemStatus } from "../services/api";
 import { telemetrySignalRClient } from "../services/signalr";
-import type { AlertMessage, SystemStatus, TelemetryMessage } from "../types/telemetry";
+import type { AlertMessage, PatientSnapshot, SystemStatus, TelemetryMessage } from "../types/telemetry";
 
-const MAX_ECG_POINTS = 500;
-const MAX_ALERTS = 20;
+const CHART_RETENTION_POINTS = 3600;
+const MAX_ECG_POINTS = 800;
+const MAX_ALERTS = 50;
+const MAX_EVENT_LOGS = 30;
+const FLUSH_INTERVAL_MS = 100;
+const RECORD_OPTIONS = ["100", "101", "103"] as const;
+
+function toPatientSnapshot(
+  telemetry: TelemetryMessage | null | undefined,
+  status: SystemStatus | null
+): PatientSnapshot | null {
+  if (!telemetry && !status?.activePatient) {
+    return null;
+  }
+
+  return {
+    patientId: telemetry?.patientId ?? status?.activePatient ?? "-",
+    recordId: telemetry?.recordId ?? status?.activeRecord ?? "-",
+    deviceId: telemetry?.deviceId ?? status?.deviceId ?? "-",
+    battery: telemetry?.battery ?? null,
+    signalQuality: telemetry?.signalQuality ?? "-",
+    streamStatus: status?.streamStatus ?? "stopped"
+  };
+}
+
+function samePatientSnapshot(a: PatientSnapshot | null, b: PatientSnapshot | null): boolean {
+  if (!a || !b) {
+    return a === b;
+  }
+
+  return (
+    a.patientId === b.patientId &&
+    a.recordId === b.recordId &&
+    a.deviceId === b.deviceId &&
+    a.battery === b.battery &&
+    a.signalQuality === b.signalQuality &&
+    a.streamStatus === b.streamStatus
+  );
+}
+
+function normalizeAlert(alert: AlertMessage): AlertMessage {
+  const severity = (alert.severity || "warning").toLowerCase();
+  const supportedSeverity =
+    severity === "critical" || severity === "warning" || severity === "normal" || severity === "info"
+      ? severity
+      : "warning";
+  return {
+    ...alert,
+    severity: supportedSeverity,
+    message: alert.message || "Abnormal ECG event"
+  };
+}
+
+function alertKey(alert: AlertMessage): string {
+  return `${alert.timestamp}-${alert.sampleIndex}-${alert.annotation}-${alert.message || ""}`;
+}
+
+function mergeAlerts(prev: AlertMessage[], incoming: AlertMessage, maxCount: number): AlertMessage[] {
+  const nextAlert = normalizeAlert(incoming);
+  const seen = new Set<string>([alertKey(nextAlert)]);
+  const merged = [nextAlert, ...prev.filter((item) => {
+    const key = alertKey(item);
+    if (seen.has(key)) {
+      return false;
+    }
+    seen.add(key);
+    return true;
+  })];
+
+  return merged
+    .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+    .slice(0, maxCount);
+}
 
 export default function DashboardPage() {
+  const [selectedRecordId, setSelectedRecordId] = useState<string>("100");
   const [ecg, setEcg] = useState<TelemetryMessage[]>([]);
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [alerts, setAlerts] = useState<AlertMessage[]>([]);
+  const [patient, setPatient] = useState<PatientSnapshot | null>(null);
+  const [windowSeconds, setWindowSeconds] = useState<5 | 10>(5);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [connectionState, setConnectionState] = useState<
     "connecting" | "connected" | "reconnecting" | "disconnected"
   >("disconnected");
+  const pendingTelemetryRef = useRef<TelemetryMessage[]>([]);
+  const lastSampleRef = useRef<number | null>(null);
+  const statusRef = useRef<SystemStatus | null>(null);
+  const selectedRecordRef = useRef<string>("100");
 
-  const loadData = useCallback(async (): Promise<void> => {
+  const loadData = useCallback(async (recordId: string): Promise<void> => {
     setLoading(true);
 
     try {
-      const [ecgData, statusData, alertData] = await Promise.all([
-        getLatestEcg(MAX_ECG_POINTS),
+      const [ecgResult, statusResult, alertResult, patientResult] = await Promise.allSettled([
+        getLatestEcg({ count: CHART_RETENTION_POINTS, recordId }),
         getSystemStatus(),
-        getAlerts(MAX_ALERTS)
+        getAlerts({ count: MAX_ALERTS, recordId }),
+        getCurrentPatient()
       ]);
 
-      setEcg(ecgData.slice(-MAX_ECG_POINTS));
+      const ecgData = ecgResult.status === "fulfilled" ? ecgResult.value : [];
+      const statusData = statusResult.status === "fulfilled" ? statusResult.value : null;
+      const alertData = alertResult.status === "fulfilled" ? alertResult.value : [];
+      const patientData = patientResult.status === "fulfilled" ? patientResult.value : null;
+
+      const sortedEcg = ecgData
+        .slice()
+        .sort((a, b) => a.sampleIndex - b.sampleIndex)
+        .slice(-CHART_RETENTION_POINTS);
+
+      setEcg(sortedEcg);
       setStatus(statusData);
-      setAlerts(alertData.slice(0, MAX_ALERTS));
+      statusRef.current = statusData;
+      setAlerts(
+        alertData
+          .map(normalizeAlert)
+          .sort((a, b) => new Date(b.timestamp).getTime() - new Date(a.timestamp).getTime())
+          .slice(0, MAX_ALERTS)
+      );
+      const derivedPatient = patientData ?? toPatientSnapshot(sortedEcg[sortedEcg.length - 1], statusData);
+      setPatient(
+        derivedPatient && derivedPatient.recordId !== "-" && derivedPatient.recordId !== recordId
+          ? { ...derivedPatient, recordId }
+          : derivedPatient
+      );
+      lastSampleRef.current = sortedEcg[sortedEcg.length - 1]?.sampleIndex ?? null;
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load dashboard data.");
@@ -41,31 +145,66 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
-    void loadData();
-  }, [loadData]);
+    selectedRecordRef.current = selectedRecordId;
+    pendingTelemetryRef.current = [];
+    lastSampleRef.current = null;
+    setEcg([]);
+    setAlerts([]);
+    setPatient(null);
+    void loadData(selectedRecordId);
+  }, [loadData, selectedRecordId]);
 
   useEffect(() => {
     let mounted = true;
+    let flushTimer: number | null = null;
 
-    const handleTelemetry = (message: TelemetryMessage): void => {
+    const flushPendingTelemetry = (): void => {
+      if (!mounted || pendingTelemetryRef.current.length === 0) {
+        return;
+      }
+
+      const batch = pendingTelemetryRef.current.splice(0, pendingTelemetryRef.current.length);
       setEcg((prev) => {
-        if (prev.some((item) => item.sampleIndex === message.sampleIndex)) {
-          return prev;
+        const combined = [...prev, ...batch].sort((a, b) => a.sampleIndex - b.sampleIndex);
+        if (combined.length <= CHART_RETENTION_POINTS) {
+          return combined;
         }
-
-        const next = [...prev, message]
-          .sort((a, b) => a.sampleIndex - b.sampleIndex)
-          .slice(-MAX_ECG_POINTS);
-        return next;
+        return combined.slice(-CHART_RETENTION_POINTS);
       });
     };
 
+    flushTimer = window.setInterval(flushPendingTelemetry, FLUSH_INTERVAL_MS);
+
+    const handleTelemetry = (message: TelemetryMessage): void => {
+      if (message.recordId !== selectedRecordRef.current) {
+        return;
+      }
+      if (lastSampleRef.current === message.sampleIndex) {
+        return;
+      }
+      lastSampleRef.current = message.sampleIndex;
+      pendingTelemetryRef.current.push(message);
+      const nextSnapshot = toPatientSnapshot(message, statusRef.current);
+      setPatient((prev) => (samePatientSnapshot(prev, nextSnapshot) ? prev : nextSnapshot));
+    };
+
     const handleAlert = (message: AlertMessage): void => {
-      setAlerts((prev) => [message, ...prev].slice(0, MAX_ALERTS));
+      const messageRecordId = message.recordId;
+      if (messageRecordId && messageRecordId !== selectedRecordRef.current) {
+        return;
+      }
+      setAlerts((prev) => mergeAlerts(prev, message, MAX_ALERTS));
     };
 
     const handleSystemStatus = (message: SystemStatus): void => {
       setStatus(message);
+      statusRef.current = message;
+      setPatient((prev) => {
+        const fallback = prev
+          ? { ...prev, streamStatus: message.streamStatus }
+          : toPatientSnapshot(null, message);
+        return samePatientSnapshot(prev, fallback) ? prev : fallback;
+      });
     };
 
     async function connectHub(): Promise<void> {
@@ -86,6 +225,10 @@ export default function DashboardPage() {
 
     return () => {
       mounted = false;
+      if (flushTimer) {
+        window.clearInterval(flushTimer);
+      }
+      pendingTelemetryRef.current = [];
       telemetrySignalRClient.offTelemetry(handleTelemetry);
       telemetrySignalRClient.offAlert(handleAlert);
       telemetrySignalRClient.offSystemStatus(handleSystemStatus);
@@ -93,15 +236,31 @@ export default function DashboardPage() {
     };
   }, []);
 
-  const latestEcg = useMemo(() => ecg.slice(-MAX_ECG_POINTS), [ecg]);
+  const latestEcg = useMemo(() => ecg.slice(-CHART_RETENTION_POINTS), [ecg]);
+  const eventLogData = useMemo(() => latestEcg.slice(-MAX_EVENT_LOGS), [latestEcg]);
+  const samplingRate = status?.samplingRate ?? 360;
 
   return (
     <main className="page">
-      <header>
+      <header className="app-header">
         <h1>CardioFlow Monitor</h1>
         <div className="header-actions">
+          <label className="record-selector">
+            <span>Record</span>
+            <select
+              value={selectedRecordId}
+              onChange={(event) => setSelectedRecordId(event.target.value)}
+              disabled={loading}
+            >
+              {RECORD_OPTIONS.map((recordId) => (
+                <option key={recordId} value={recordId}>
+                  {recordId}
+                </option>
+              ))}
+            </select>
+          </label>
           <span className={`connection-badge connection-${connectionState}`}>{connectionState}</span>
-          <button className="refresh-btn" onClick={() => void loadData()} disabled={loading}>
+          <button className="refresh-btn" onClick={() => void loadData(selectedRecordId)} disabled={loading}>
             {loading ? "Loading..." : "Refresh"}
           </button>
         </div>
@@ -112,9 +271,21 @@ export default function DashboardPage() {
         <div className="panel">Loading dashboard...</div>
       ) : (
         <>
-          <SummaryCards status={status} />
-          <EcgChart data={latestEcg} />
-          <AlertPanel alerts={alerts} />
+          <SummaryCards status={status} selectedRecordId={selectedRecordId} />
+          <section className="dashboard-main">
+            <EcgChart
+              data={latestEcg}
+              samplingRate={samplingRate}
+              windowSeconds={windowSeconds}
+              maxRenderPoints={MAX_ECG_POINTS}
+              onWindowChange={setWindowSeconds}
+            />
+            <AlertPanel alerts={alerts} />
+          </section>
+          <section className="dashboard-bottom">
+            <PatientCard patient={patient} />
+            <EventLogViewer events={eventLogData} />
+          </section>
         </>
       )}
     </main>

@@ -2,9 +2,10 @@ import type { SystemStatus } from "../types/telemetry";
 
 type Props = {
   status: SystemStatus | null;
+  selectedRecordId: string;
 };
 
-export default function SummaryCards({ status }: Props) {
+export default function SummaryCards({ status, selectedRecordId }: Props) {
   const streamStatus = status?.streamStatus ?? "stopped";
   const lastAlertValue = (() => {
     const value = status?.lastAlert;
@@ -25,9 +26,10 @@ export default function SummaryCards({ status }: Props) {
 
   const cards = [
     { label: "Active Patient", value: status?.activePatient ?? "-" },
+    { label: "Selected Record", value: selectedRecordId },
     { label: "Stream Status", value: streamStatus, isStatus: true },
+    { label: "Backend Record", value: status?.activeRecordId ?? status?.activeRecord ?? "-" },
     { label: "Sampling Rate", value: `${status?.samplingRate ?? 0} Hz` },
-    { label: "Topic", value: status?.topic ?? "-" },
     { label: "Last Alert", value: lastAlertValue }
   ];
 

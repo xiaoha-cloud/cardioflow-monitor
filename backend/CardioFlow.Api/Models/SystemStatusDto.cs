@@ -16,6 +16,15 @@ public class SystemStatusDto
     [JsonPropertyName("activePatient")]
     public string? ActivePatient { get; set; }
 
+    [JsonPropertyName("activeRecord")]
+    public string? ActiveRecord { get; set; }
+
+    [JsonPropertyName("activeRecordId")]
+    public string? ActiveRecordId { get; set; }
+
+    [JsonPropertyName("deviceId")]
+    public string? DeviceId { get; set; }
+
     [JsonPropertyName("lastAlert")]
     public string? LastAlert { get; set; }
 
