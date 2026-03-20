@@ -6,6 +6,10 @@ CardioFlow Monitor is a real-time ECG monitoring demo stack:
 - **Backend** consumes telemetry, performs anomaly detection, and exposes REST + SignalR
 - **Frontend** renders ECG chart, alerts, patient/device info, and event log
 
+![CI](https://github.com/your-org-or-user/cardioflow-monitor/actions/workflows/ci.yml/badge.svg)
+![Deploy Frontend](https://github.com/your-org-or-user/cardioflow-monitor/actions/workflows/deploy-frontend.yml/badge.svg)
+![Deploy Backend](https://github.com/your-org-or-user/cardioflow-monitor/actions/workflows/deploy-backend.yml/badge.svg)
+
 ## Dashboard Screenshot
 
 ![CardioFlow Dashboard Overview](docs/screenshots/dashboard-overview.png)
@@ -94,10 +98,60 @@ npm run dev
 
 Frontend default URL: [http://localhost:5173](http://localhost:5173)
 
+## CI/CD
+
+### CI workflow
+
+- File: `.github/workflows/ci.yml`
+- Triggers:
+  - `push` to `main` / `develop`
+  - `pull_request` to `main` / `develop`
+  - `workflow_dispatch`
+- Path filters:
+  - `backend/**`
+  - `frontend/**`
+  - `simulator/**`
+  - `.github/workflows/**`
+
+CI jobs:
+
+- `backend-ci`: restore + build (`backend/CardioFlow.Api`)
+- `frontend-ci`: `npm ci` + `npm run build` (`frontend/dashboard`)
+- `simulator-ci`: pip install + `py_compile` (`simulator/mitbih-replay`)
+
+### Deploy workflows
+
+- Frontend: `.github/workflows/deploy-frontend.yml`
+  - Trigger: `push` to `main` (frontend paths) or manual dispatch
+  - Target: Azure Static Web Apps
+  - Azure portal preset: select `React` (this project still builds with Vite and outputs `dist`)
+- Backend: `.github/workflows/deploy-backend.yml`
+  - Trigger: `push` to `main` (backend paths) or manual dispatch
+  - Target: Azure App Service (Linux)
+
+## GitHub Secrets
+
+Configure in: **GitHub repo -> Settings -> Secrets and variables -> Actions**
+
+Required or optional keys used by workflows:
+
+- `AZURE_STATIC_WEB_APPS_API_TOKEN` (frontend deploy token)
+- `VITE_API_BASE_URL_PROD` (frontend build-time API URL)
+- `VITE_SIGNALR_URL_PROD` (frontend build-time SignalR URL)
+- `AZURE_WEBAPP_PUBLISH_PROFILE` (backend App Service publish profile)
+- `BACKEND_APP_NAME` (backend App Service name, e.g. `cardioflow-api-prod`)
+- `AZURE_CLIENT_ID` / `AZURE_TENANT_ID` / `AZURE_SUBSCRIPTION_ID` (optional, if switching to OIDC auth)
+
+## Live Demo
+
+- Frontend demo URL: [https://cardioflow-dashboard-prod.azurestaticapps.net](https://cardioflow-dashboard-prod.azurestaticapps.net)
+- Backend API URL: [https://cardioflow-api-prod.azurewebsites.net](https://cardioflow-api-prod.azurewebsites.net)
+- Current scope: frontend + backend deployed on Azure (simulator remains local)
+
 ## Frontend Environment Variables
 
 - `VITE_API_BASE_URL` (default: `http://localhost:5050`)
-- `VITE_SIGNALR_HUB_URL` (default: `http://localhost:5050/hubs/telemetry`)
+- `VITE_SIGNALR_URL` (default: `http://localhost:5050/hubs/telemetry`)
 
 ## Backend API Overview
 
@@ -151,5 +205,13 @@ If all arrays are empty and `streamStatus=stopped`, simulator is likely not publ
   - verify Kafka topic exists (`ecg.telemetry`)
   - verify backend logs show consumer activity
 - **Frontend connected but no updates**:
-  - verify `VITE_SIGNALR_HUB_URL`
+  - verify `VITE_SIGNALR_URL` (or fallback `VITE_SIGNALR_HUB_URL`)
   - check browser console for SignalR reconnect/disconnect logs
+- **CI fails on wrong paths**:
+  - verify workflow `working-directory` values match repository structure
+- **CI fails on SDK/Node mismatch**:
+  - align local versions with workflow (`.NET 10`, `Node 20`, `Python 3.11`)
+- **Deploy fails with missing secrets**:
+  - ensure all required keys exist in GitHub Actions secrets
+- **Deploy uses wrong backend URL**:
+  - verify `VITE_API_BASE_URL_PROD` and `VITE_SIGNALR_URL_PROD` point to your live backend

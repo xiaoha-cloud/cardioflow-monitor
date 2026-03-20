@@ -7,7 +7,10 @@ export type HubConnectionState =
     | "reconnecting"
     | "disconnected";
 
-const HUB_URL = import.meta.env.VITE_SIGNALR_HUB_URL ?? "http://localhost:5050/hubs/telemetry";
+const HUB_URL =
+    import.meta.env.VITE_SIGNALR_URL ??
+    import.meta.env.VITE_SIGNALR_HUB_URL ??
+    "http://localhost:5050/hubs/telemetry";
 
 class TelemetrySignalRClient {
     private connection: signalR.HubConnection | null = null;
