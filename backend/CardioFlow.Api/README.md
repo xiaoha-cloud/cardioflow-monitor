@@ -2,6 +2,17 @@
 
 ASP.NET Core Web API for consuming ECG telemetry data from Kafka and providing REST endpoints for accessing the data.
 
+## Live Demo
+
+⚙️ **[https://cardioflow-monitor-1.onrender.com](https://cardioflow-monitor-1.onrender.com)**
+
+Quick health check:
+```bash
+curl https://cardioflow-monitor-1.onrender.com/api/system/status
+```
+
+> Deployed via Docker on Render's free tier. May take ~50 seconds to wake up after inactivity.
+
 ## Overview
 
 This API service:
@@ -12,7 +23,7 @@ This API service:
 
 ## Prerequisites
 
-- .NET 8.0 SDK or later
+- .NET 10.0 SDK or later
 - Kafka running locally (see `../../scripts/kafka/` for setup)
 - Kafka topic `ecg.telemetry` created
 

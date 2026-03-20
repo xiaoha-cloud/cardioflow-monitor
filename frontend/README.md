@@ -2,6 +2,13 @@
 
 CardioFlow frontend is a React + TypeScript + Vite single-page dashboard for realtime ECG monitoring.
 
+## Live Demo
+
+🖥️ **[https://cardioflow-monitor-gcqv.vercel.app](https://cardioflow-monitor-gcqv.vercel.app)**
+
+> The frontend connects to the backend at [https://cardioflow-monitor-1.onrender.com](https://cardioflow-monitor-1.onrender.com).
+> The backend runs on Render's free tier and may take ~50 seconds to wake up after inactivity.
+
 ## Features
 
 - Summary cards for stream/patient status
