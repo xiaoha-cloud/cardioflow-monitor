@@ -6,6 +6,11 @@ CardioFlow Monitor is a real-time ECG monitoring demo stack:
 - **Backend** consumes telemetry, performs anomaly detection, and exposes REST + SignalR
 - **Frontend** renders ECG chart, alerts, patient/device info, and event log
 
+## Dashboard Screenshot
+
+![CardioFlow Dashboard Overview](docs/screenshots/dashboard-overview.png)
+
+
 ## Architecture
 
 ```mermaid
@@ -135,6 +140,8 @@ curl -sS "http://localhost:5050/api/alerts?recordId=100&count=5"; echo
 ```
 
 If all arrays are empty and `streamStatus=stopped`, simulator is likely not publishing or Kafka/consumer is disconnected.
+
+
 
 ## Troubleshooting
 

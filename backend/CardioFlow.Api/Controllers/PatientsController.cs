@@ -9,31 +9,25 @@ namespace CardioFlow.Api.Controllers;
 public class PatientsController : ControllerBase
 {
     private readonly ITelemetryBufferService _bufferService;
+    private readonly IStatusAggregationService _statusAggregationService;
     private readonly ILogger<PatientsController> _logger;
 
     public PatientsController(
         ITelemetryBufferService bufferService,
+        IStatusAggregationService statusAggregationService,
         ILogger<PatientsController> logger)
     {
         _bufferService = bufferService;
+        _statusAggregationService = statusAggregationService;
         _logger = logger;
     }
 
     [HttpGet("current")]
+    [ProducesResponseType(typeof(CurrentPatientDto), StatusCodes.Status200OK)]
     public ActionResult<CurrentPatientDto> GetCurrent()
     {
         var latestTelemetry = _bufferService.GetLatest(1).FirstOrDefault();
-        var bufferCount = _bufferService.GetCount();
-        var lastMessageAt = _bufferService.GetLastMessageAt();
-        var now = DateTime.UtcNow;
-
-        var streamStatus = "stopped";
-        if (bufferCount > 0)
-        {
-            streamStatus = lastMessageAt.HasValue && now - lastMessageAt.Value <= TimeSpan.FromSeconds(30)
-                ? "running"
-                : "idle";
-        }
+        var streamStatus = _statusAggregationService.GetCurrentStatus().StreamStatus;
 
         var dto = new CurrentPatientDto
         {

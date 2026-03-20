@@ -20,6 +20,7 @@ function formatTime(value: string): string {
 }
 
 export default function EventLogViewer({ events }: Props) {
+  // Event log is latest-first and bounded to keep table rendering stable.
   const latestEvents = events.slice(-Math.min(MAX_EVENTS, DEFAULT_VISIBLE_LOGS)).reverse();
 
   return (
@@ -36,6 +37,7 @@ export default function EventLogViewer({ events }: Props) {
                 <th>Sample</th>
                 <th>Annotation</th>
                 <th>Status</th>
+                <th>RR</th>
               </tr>
             </thead>
             <tbody>
@@ -45,6 +47,7 @@ export default function EventLogViewer({ events }: Props) {
                   <td>{item.sampleIndex}</td>
                   <td>{item.annotation || "-"}</td>
                   <td>{item.status || "-"}</td>
+                  <td>{item.rrIntervalMs == null ? "-" : `${Math.round(item.rrIntervalMs)}ms`}</td>
                 </tr>
               ))}
             </tbody>

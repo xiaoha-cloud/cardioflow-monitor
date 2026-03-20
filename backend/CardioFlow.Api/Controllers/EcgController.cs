@@ -30,6 +30,8 @@ public class EcgController : ControllerBase
     }
 
     [HttpGet("latest")]
+    [ProducesResponseType(typeof(IReadOnlyList<TelemetryMessage>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public ActionResult<IReadOnlyList<TelemetryMessage>> GetLatest(
         [FromQuery] int count = DefaultCount,
         [FromQuery] int? windowSeconds = null,
@@ -54,6 +56,8 @@ public class EcgController : ControllerBase
     }
 
     [HttpGet("window")]
+    [ProducesResponseType(typeof(EcgWindowResponseDto), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public ActionResult<EcgWindowResponseDto> GetWindow(
         [FromQuery] int count = DefaultCount,
         [FromQuery] int? windowSeconds = null,
@@ -90,6 +94,8 @@ public class EcgController : ControllerBase
     }
 
     [HttpGet("events")]
+    [ProducesResponseType(typeof(IReadOnlyList<TelemetryMessage>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public ActionResult<IReadOnlyList<TelemetryMessage>> GetEvents(
         [FromQuery] int count = EventsDefaultCount,
         [FromQuery] string? recordId = null)

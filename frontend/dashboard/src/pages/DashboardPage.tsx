@@ -6,7 +6,7 @@ import PatientCard from "../components/PatientCard";
 import SummaryCards from "../components/SummaryCards";
 import { getAlerts, getCurrentPatient, getLatestEcg, getSystemStatus } from "../services/api";
 import { telemetrySignalRClient } from "../services/signalr";
-import type { AlertMessage, PatientSnapshot, SystemStatus, TelemetryMessage } from "../types/telemetry";
+import type { AlertMessage, CurrentPatient, SystemStatus, TelemetryMessage } from "../types/telemetry";
 
 const CHART_RETENTION_POINTS = 3600;
 const MAX_ECG_POINTS = 800;
@@ -18,22 +18,23 @@ const RECORD_OPTIONS = ["100", "101", "103"] as const;
 function toPatientSnapshot(
   telemetry: TelemetryMessage | null | undefined,
   status: SystemStatus | null
-): PatientSnapshot | null {
+): CurrentPatient | null {
   if (!telemetry && !status?.activePatient) {
     return null;
   }
 
   return {
     patientId: telemetry?.patientId ?? status?.activePatient ?? "-",
-    recordId: telemetry?.recordId ?? status?.activeRecord ?? "-",
+    recordId: telemetry?.recordId ?? status?.activeRecordId ?? status?.activeRecord ?? "-",
     deviceId: telemetry?.deviceId ?? status?.deviceId ?? "-",
     battery: telemetry?.battery ?? null,
-    signalQuality: telemetry?.signalQuality ?? "-",
+    signalQuality: telemetry?.signalQuality ?? "unknown",
+    rrIntervalMs: telemetry?.rrIntervalMs ?? telemetry?.derivedMetrics?.rrIntervalMs ?? null,
     streamStatus: status?.streamStatus ?? "stopped"
   };
 }
 
-function samePatientSnapshot(a: PatientSnapshot | null, b: PatientSnapshot | null): boolean {
+function samePatientSnapshot(a: CurrentPatient | null, b: CurrentPatient | null): boolean {
   if (!a || !b) {
     return a === b;
   }
@@ -44,6 +45,7 @@ function samePatientSnapshot(a: PatientSnapshot | null, b: PatientSnapshot | nul
     a.deviceId === b.deviceId &&
     a.battery === b.battery &&
     a.signalQuality === b.signalQuality &&
+    a.rrIntervalMs === b.rrIntervalMs &&
     a.streamStatus === b.streamStatus
   );
 }
@@ -57,12 +59,15 @@ function normalizeAlert(alert: AlertMessage): AlertMessage {
   return {
     ...alert,
     severity: supportedSeverity,
-    message: alert.message || "Abnormal ECG event"
+    message: alert.message || "Abnormal ECG event",
+    sourceRule: alert.sourceRule || "unknown",
+    recordId: alert.recordId || "-",
+    annotation: alert.annotation ?? null
   };
 }
 
 function alertKey(alert: AlertMessage): string {
-  return `${alert.timestamp}-${alert.sampleIndex}-${alert.annotation}-${alert.message || ""}`;
+  return `${alert.timestamp}-${alert.sampleIndex}-${alert.message || ""}-${alert.sourceRule || "unknown"}`;
 }
 
 function mergeAlerts(prev: AlertMessage[], incoming: AlertMessage, maxCount: number): AlertMessage[] {
@@ -87,7 +92,7 @@ export default function DashboardPage() {
   const [ecg, setEcg] = useState<TelemetryMessage[]>([]);
   const [status, setStatus] = useState<SystemStatus | null>(null);
   const [alerts, setAlerts] = useState<AlertMessage[]>([]);
-  const [patient, setPatient] = useState<PatientSnapshot | null>(null);
+  const [patient, setPatient] = useState<CurrentPatient | null>(null);
   const [windowSeconds, setWindowSeconds] = useState<5 | 10>(5);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -145,6 +150,7 @@ export default function DashboardPage() {
   }, []);
 
   useEffect(() => {
+    // Record switch policy: reset local buffers first, then reload REST baseline for the selected record.
     selectedRecordRef.current = selectedRecordId;
     pendingTelemetryRef.current = [];
     lastSampleRef.current = null;
@@ -155,6 +161,10 @@ export default function DashboardPage() {
   }, [loadData, selectedRecordId]);
 
   useEffect(() => {
+    // Dashboard runtime flow:
+    // - keep telemetry batching on interval to avoid per-message chart re-render
+    // - subscribe SignalR handlers once on mount
+    // - unsubscribe + disconnect on unmount to prevent duplicate listeners
     let mounted = true;
     let flushTimer: number | null = null;
 
