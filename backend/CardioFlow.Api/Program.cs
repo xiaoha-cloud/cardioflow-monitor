@@ -9,20 +9,22 @@ builder.Services.AddControllers();
 builder.Services.AddEndpointsApiExplorer();
 builder.Services.AddSwaggerGen();
 builder.Services.AddSignalR();
-if (builder.Environment.IsDevelopment())
+builder.Services.AddCors(options =>
 {
-    builder.Services.AddCors(options =>
+    options.AddPolicy("FrontendClients", policy =>
     {
-        options.AddPolicy("FrontendDev", policy =>
-        {
-            policy
-                .WithOrigins("http://localhost:5173")
-                .AllowAnyHeader()
-                .AllowAnyMethod()
-                .AllowCredentials();
-        });
+        var configuredOrigins = builder.Configuration.GetSection("Cors:AllowedOrigins").Get<string[]>();
+        var origins = (configuredOrigins is { Length: > 0 }
+            ? configuredOrigins
+            : ["http://localhost:5173"]);
+
+        policy
+            .WithOrigins(origins)
+            .AllowAnyHeader()
+            .AllowAnyMethod()
+            .AllowCredentials();
     });
-}
+});
 
 // Register TelemetryBufferService as Singleton
 builder.Services.AddSingleton<ITelemetryBufferService, TelemetryBufferService>();
@@ -56,10 +58,7 @@ if (app.Environment.IsDevelopment())
     app.UseSwaggerUI();
 }
 
-if (app.Environment.IsDevelopment())
-{
-    app.UseCors("FrontendDev");
-}
+app.UseCors("FrontendClients");
 if (!app.Environment.IsDevelopment())
 {
     app.UseHttpsRedirection();
