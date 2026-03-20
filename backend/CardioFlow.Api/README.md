@@ -66,30 +66,60 @@ export KAFKA_BOOTSTRAP_SERVERS=localhost:9092
    ```
 
 4. **The API will be available at:**
-   - HTTP: http://localhost:5000
+   - HTTP: http://localhost:5050
    - HTTPS: https://localhost:5001
-   - Swagger UI: http://localhost:5000/swagger
+   - Swagger UI: http://localhost:5050/swagger
 
-## API Endpoints
+## Frontend Integration Contract
 
-### GET /api/telemetry/latest?count=100
-Get the latest N telemetry messages from the buffer.
+This section defines the frozen REST contract for frontend integration during Day6.
 
-**Query Parameters:**
-- `count` (optional): Number of messages to retrieve (default: 100, max: 1000)
+### GET `/api/system/status`
 
-**Response:**
+**Success response**
+```json
+{
+  "streamStatus": "running",
+  "samplingRate": 360,
+  "topic": "ecg.telemetry",
+  "activePatient": "mitdb-100",
+  "lastAlert": "PVC detected",
+  "bufferCount": 1000,
+  "lastMessageAt": "2026-03-20T18:55:10.1234567Z"
+}
+```
+
+**Empty-data response**
+```json
+{
+  "streamStatus": "stopped",
+  "samplingRate": 360,
+  "topic": "ecg.telemetry",
+  "activePatient": null,
+  "lastAlert": null,
+  "bufferCount": 0,
+  "lastMessageAt": null
+}
+```
+
+### GET `/api/ecg/latest?count=500`
+
+- Default `count=500`
+- Valid range `1..1000`
+- Returns messages sorted by `sampleIndex` ascending
+
+**Success response**
 ```json
 [
   {
     "patientId": "mitdb-100",
     "recordId": "100",
     "deviceId": "ecg-sim-01",
-    "timestamp": "2026-03-11T22:15:10.234Z",
-    "sampleIndex": 12345,
-    "lead1": 0.82,
+    "timestamp": "2026-03-20T18:55:10.1234567Z",
+    "sampleIndex": 12340,
+    "lead1": -0.245,
     "annotation": "N",
-    "heartRate": 72,
+    "heartRate": 74,
     "status": "normal",
     "signalQuality": "good",
     "battery": 87
@@ -97,23 +127,54 @@ Get the latest N telemetry messages from the buffer.
 ]
 ```
 
-### GET /api/telemetry/all
-Get all messages currently in the buffer (up to MaxBufferSize).
+**Empty-data response**
+```json
+[]
+```
 
-### GET /api/telemetry/status
-Get buffer status information.
+### GET `/api/alerts?count=20`
 
-**Response:**
+- Default `count=20`
+- Valid range `1..100`
+- Returns latest alerts first (`timestamp` descending)
+
+**Success response**
+```json
+[
+  {
+    "patientId": "mitdb-100",
+    "deviceId": "ecg-sim-01",
+    "timestamp": "2026-03-20T18:55:08.2345678Z",
+    "sampleIndex": 12220,
+    "annotation": "V",
+    "severity": "warning",
+    "message": "PVC detected",
+    "heartRate": 78
+  }
+]
+```
+
+**Empty-data response**
+```json
+[]
+```
+
+### GET `/health`
+
+**Success response**
 ```json
 {
-  "count": 100,
-  "hasMessages": true,
-  "latestMessage": { ... }
+  "status": "ok",
+  "kafkaConfigured": true,
+  "bufferCount": 1000,
+  "alertsCount": 35
 }
 ```
 
-### POST /api/telemetry/clear
-Clear all messages from the buffer.
+### Error Codes
+
+- `400 Bad Request`: query validation failure (for invalid `count` range)
+- `500 Internal Server Error`: unexpected server-side failure
 
 ## Architecture
 
@@ -161,7 +222,7 @@ Simulator → Kafka (ecg.telemetry) → KafkaConsumerService → TelemetryBuffer
 
 4. **Query the API:**
    ```bash
-   curl http://localhost:5000/api/telemetry/latest?count=10
+   curl "http://localhost:5050/api/ecg/latest?count=10"
    ```
 
 ## Logging

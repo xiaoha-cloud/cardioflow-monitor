@@ -38,4 +38,10 @@ public interface ITelemetryBufferService
     /// </summary>
     /// <returns>Number of messages in the buffer.</returns>
     int GetCount();
+
+    /// <summary>
+    /// Gets the timestamp of the latest message currently in the buffer.
+    /// </summary>
+    /// <returns>Latest message timestamp, or null when buffer is empty.</returns>
+    DateTime? GetLastMessageAt();
 }

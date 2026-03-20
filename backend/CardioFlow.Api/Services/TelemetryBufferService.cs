@@ -1,7 +1,5 @@
 using System.Collections.Concurrent;
 using CardioFlow.Api.Models;
-using Microsoft.Extensions.Options;
-
 namespace CardioFlow.Api.Services;
 
 /// <summary>
@@ -127,5 +125,18 @@ public class TelemetryBufferService : ITelemetryBufferService
     public int GetCount()
     {
         return _buffer.Count;
+    }
+
+    /// <summary>
+    /// Gets timestamp of the latest buffered message.
+    /// </summary>
+    public DateTime? GetLastMessageAt()
+    {
+        return _buffer
+            .ToArray()
+            .OrderByDescending(m => m.Timestamp)
+            .ThenByDescending(m => m.SampleIndex)
+            .Select(m => (DateTime?)m.Timestamp)
+            .FirstOrDefault();
     }
 }

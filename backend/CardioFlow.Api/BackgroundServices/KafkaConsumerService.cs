@@ -1,8 +1,9 @@
 using System.Text.Json;
+using CardioFlow.Api.Hubs;
 using CardioFlow.Api.Models;
 using CardioFlow.Api.Services;
 using Confluent.Kafka;
-using Microsoft.Extensions.Options;
+using Microsoft.AspNetCore.SignalR;
 
 namespace CardioFlow.Api.BackgroundServices;
 
@@ -15,6 +16,9 @@ public class KafkaConsumerService : BackgroundService
     private readonly ILogger<KafkaConsumerService> _logger;
     private readonly IConfiguration _configuration;
     private readonly ITelemetryBufferService _bufferService;
+    private readonly IAnomalyDetectionService _anomalyDetectionService;
+    private readonly IAlertService _alertService;
+    private readonly IHubContext<TelemetryHub> _hubContext;
     private IConsumer<string, string>? _consumer;
     private readonly string _bootstrapServers;
     private readonly string _consumerGroupId;
@@ -28,11 +32,17 @@ public class KafkaConsumerService : BackgroundService
     public KafkaConsumerService(
         ILogger<KafkaConsumerService> logger,
         IConfiguration configuration,
-        ITelemetryBufferService bufferService)
+        ITelemetryBufferService bufferService,
+        IAnomalyDetectionService anomalyDetectionService,
+        IAlertService alertService,
+        IHubContext<TelemetryHub> hubContext)
     {
         _logger = logger;
         _configuration = configuration;
         _bufferService = bufferService;
+        _anomalyDetectionService = anomalyDetectionService;
+        _alertService = alertService;
+        _hubContext = hubContext;
 
         // Read Kafka configuration from appsettings.json or environment variables
         _bootstrapServers = Environment.GetEnvironmentVariable("KAFKA_BOOTSTRAP_SERVERS")
@@ -265,6 +275,22 @@ public class KafkaConsumerService : BackgroundService
 
             // Add to buffer
             _bufferService.Add(telemetryMessage);
+            await TryBroadcastAsync("ReceiveTelemetry", telemetryMessage, cancellationToken);
+
+            // Detect and store alerts based on telemetry payload.
+            var alerts = _anomalyDetectionService.DetectAlerts(telemetryMessage);
+            foreach (var alert in alerts)
+            {
+                _alertService.AddAlert(alert);
+                await TryBroadcastAsync("ReceiveAlert", alert, cancellationToken);
+                _logger.LogInformation(
+                    "Alert generated: patientId={PatientId}, sampleIndex={SampleIndex}, severity={Severity}, message={Message}",
+                    alert.PatientId,
+                    alert.SampleIndex,
+                    alert.Severity,
+                    alert.Message);
+            }
+
             _messagesConsumed++;
 
             // Log every 100 messages
@@ -277,6 +303,8 @@ public class KafkaConsumerService : BackgroundService
                     telemetryMessage.Lead1,
                     telemetryMessage.Annotation,
                     _bufferService.GetCount());
+
+                await TryBroadcastAsync("ReceiveSystemStatus", BuildSystemStatus(), cancellationToken);
             }
             else
             {
@@ -299,5 +327,44 @@ public class KafkaConsumerService : BackgroundService
         }
 
         await Task.CompletedTask;
+    }
+
+    private SystemStatusDto BuildSystemStatus()
+    {
+        var latestTelemetry = _bufferService.GetLatest(1).FirstOrDefault();
+        var bufferCount = _bufferService.GetCount();
+        var lastMessageAt = _bufferService.GetLastMessageAt();
+        var now = DateTime.UtcNow;
+
+        var streamStatus = "stopped";
+        if (bufferCount > 0)
+        {
+            streamStatus = lastMessageAt.HasValue && now - lastMessageAt.Value <= TimeSpan.FromSeconds(30)
+                ? "running"
+                : "idle";
+        }
+
+        return new SystemStatusDto
+        {
+            StreamStatus = streamStatus,
+            SamplingRate = _configuration.GetValue<int>("Telemetry:SamplingRate", 360),
+            Topic = _configuration["Kafka:TelemetryTopic"] ?? "ecg.telemetry",
+            ActivePatient = latestTelemetry?.PatientId,
+            LastAlert = _alertService.GetLastAlert()?.Message,
+            BufferCount = bufferCount,
+            LastMessageAt = lastMessageAt
+        };
+    }
+
+    private async Task TryBroadcastAsync(string eventName, object payload, CancellationToken cancellationToken)
+    {
+        try
+        {
+            await _hubContext.Clients.All.SendAsync(eventName, payload, cancellationToken);
+        }
+        catch (Exception ex)
+        {
+            _logger.LogWarning(ex, "SignalR broadcast failed for event {EventName}", eventName);
+        }
     }
 }
