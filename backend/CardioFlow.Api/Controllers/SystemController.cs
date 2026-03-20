@@ -26,6 +26,7 @@ public class SystemController : ControllerBase
     public ActionResult<SystemStatusDto> GetStatus()
     {
         var latestTelemetry = _bufferService.GetLatest(1).FirstOrDefault();
+        var activeRecordId = _bufferService.GetLatestRecordId();
         var bufferCount = _bufferService.GetCount();
         var lastMessageAt = _bufferService.GetLastMessageAt();
         var now = DateTime.UtcNow;
@@ -44,6 +45,9 @@ public class SystemController : ControllerBase
             SamplingRate = _configuration.GetValue<int>("Telemetry:SamplingRate", 360),
             Topic = _configuration["Kafka:TelemetryTopic"] ?? "ecg.telemetry",
             ActivePatient = latestTelemetry?.PatientId,
+            ActiveRecord = activeRecordId,
+            ActiveRecordId = activeRecordId,
+            DeviceId = latestTelemetry?.DeviceId,
             LastAlert = _alertService.GetLastAlert()?.Message,
             BufferCount = bufferCount,
             LastMessageAt = lastMessageAt

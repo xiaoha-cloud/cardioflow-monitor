@@ -96,6 +96,24 @@ public class TelemetryBufferService : ITelemetryBufferService
         return latestMessages.AsReadOnly();
     }
 
+    public IReadOnlyList<TelemetryMessage> GetLatestByRecord(int count, string recordId)
+    {
+        if (count <= 0 || string.IsNullOrWhiteSpace(recordId))
+        {
+            return Array.Empty<TelemetryMessage>();
+        }
+
+        var latestMessages = _buffer
+            .ToArray()
+            .Where(m => string.Equals(m.RecordId, recordId, StringComparison.OrdinalIgnoreCase))
+            .OrderByDescending(m => m.Timestamp)
+            .ThenByDescending(m => m.SampleIndex)
+            .Take(count)
+            .ToList();
+
+        return latestMessages.AsReadOnly();
+    }
+
     /// <summary>
     /// Gets all messages currently in the buffer.
     /// </summary>
@@ -137,6 +155,16 @@ public class TelemetryBufferService : ITelemetryBufferService
             .OrderByDescending(m => m.Timestamp)
             .ThenByDescending(m => m.SampleIndex)
             .Select(m => (DateTime?)m.Timestamp)
+            .FirstOrDefault();
+    }
+
+    public string? GetLatestRecordId()
+    {
+        return _buffer
+            .ToArray()
+            .OrderByDescending(m => m.Timestamp)
+            .ThenByDescending(m => m.SampleIndex)
+            .Select(m => m.RecordId)
             .FirstOrDefault();
     }
 }

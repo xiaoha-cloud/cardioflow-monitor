@@ -23,6 +23,14 @@ public interface ITelemetryBufferService
     IReadOnlyList<TelemetryMessage> GetLatest(int count);
 
     /// <summary>
+    /// Gets the latest N messages from the buffer for a specific MIT-BIH record.
+    /// </summary>
+    /// <param name="count">Number of messages to retrieve.</param>
+    /// <param name="recordId">Record identifier filter (e.g., "100").</param>
+    /// <returns>Read-only list of telemetry messages (most recent first).</returns>
+    IReadOnlyList<TelemetryMessage> GetLatestByRecord(int count, string recordId);
+
+    /// <summary>
     /// Gets all messages currently in the buffer.
     /// </summary>
     /// <returns>Read-only list of all telemetry messages.</returns>
@@ -44,4 +52,10 @@ public interface ITelemetryBufferService
     /// </summary>
     /// <returns>Latest message timestamp, or null when buffer is empty.</returns>
     DateTime? GetLastMessageAt();
+
+    /// <summary>
+    /// Gets the latest active record identifier in the buffer.
+    /// </summary>
+    /// <returns>Record identifier, or null when buffer is empty.</returns>
+    string? GetLatestRecordId();
 }
