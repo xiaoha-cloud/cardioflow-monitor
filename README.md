@@ -1,67 +1,148 @@
 # CardioFlow Monitor
 
-ECG monitoring stack: backend (ASP.NET Core + Kafka), React frontend, and a simulator for data replay. Day 1 covers repository layout and local Kafka only; no app code or CI yet.
+CardioFlow Monitor is a real-time ECG monitoring demo stack:
 
-## Tech stack
+- **Simulator** replays MIT-BIH records (`100`, `101`, `103`) to Kafka
+- **Backend** consumes telemetry, performs anomaly detection, and exposes REST + SignalR
+- **Frontend** renders ECG chart, alerts, patient/device info, and event log
 
-- **Backend:** ASP.NET Core, Kafka (telemetry and alerts)
-- **Frontend:** React (to be initialized later)
-- **Simulator:** Data replay (e.g. future MIT-BIH replay); language TBD
-- **Local Kafka:** Docker Compose (development only)
+## Architecture
 
-## Directory structure
+```mermaid
+flowchart LR
+  sim[MIT-BIH Replay Simulator] --> k[(Kafka ecg.telemetry)]
+  k --> c[ASP.NET Core KafkaConsumerService]
+  c --> b[TelemetryBufferService]
+  c --> a[AlertService]
+  c --> d[AnomalyDetectionService]
+  b --> rest1[/GET /api/ecg/latest<br/>GET /api/ecg/events/]
+  a --> rest2[/GET /api/alerts/]
+  b --> rest3[/GET /api/system/status/]
+  c --> hub[SignalR /hubs/telemetry]
+  rest1 --> fe[React Dashboard]
+  rest2 --> fe
+  rest3 --> fe
+  hub --> fe
+```
 
-| Path | Purpose | CI build |
-|------|---------|----------|
-| `backend/` | ASP.NET Core API and Kafka consumers | `backend/*` |
-| `frontend/` | React app (not yet initialized) | `frontend/*` |
-| `simulator/` | Replay/simulation (e.g. `simulator/mitbih-replay`) | `simulator/*` |
-| `docs/` | Documentation | - |
-| `docs/architecture/` | Architecture notes and diagrams | - |
-| `docs/screenshots/` | UI or runbook screenshots | - |
-| `scripts/kafka/` | Docker Compose and helpers for local Kafka | - |
+## Repository Structure
 
-Empty directories are kept in git via `.gitkeep` or a short `README.md` so CI can rely on path-based builds.
+| Path | Purpose |
+|------|---------|
+| `backend/CardioFlow.Api/` | ASP.NET Core API, Kafka consumer, REST, SignalR |
+| `frontend/dashboard/` | React + TypeScript + Vite dashboard |
+| `simulator/mitbih-replay/` | Python MIT-BIH replay producer |
+| `scripts/kafka/` | Docker Compose + topic bootstrap scripts |
+| `docs/` | Architecture notes and screenshots |
 
 ## Prerequisites
 
-- .NET SDK (for backend)
-- Node.js and npm/yarn (for frontend, when added)
-- Python 3 (optional, for simulator tooling if needed)
-- Docker and Docker Compose (for local Kafka)
+- Docker + Docker Compose
+- .NET SDK
+- Node.js + npm
+- Python 3.8+
 
-## Environment variables
+## Quick Start
 
-For local runs you may need:
+### 1) Start Kafka and create topics
 
-- `KAFKA_BOOTSTRAP_SERVERS` – e.g. `localhost:9092` when using the Compose stack
+```bash
+cd scripts/kafka
+docker compose up -d
+cd ../..
+scripts/kafka/ensure-topics.sh
+```
 
-Do not commit `.env` or any file containing secrets. Prefer `.env.local` or OS/user-specific config and add only the variable names and examples in this README or in `docs/`.
+### 2) Start backend
 
-## Kafka (local development)
+```bash
+cd backend/CardioFlow.Api
+dotnet restore
+dotnet run --urls http://localhost:5050
+```
 
-Kafka is for local and development use only. Production deployment is not in scope for Day 1.
+### 3) Start simulator replay
 
-1. **Prepare Kafka (one command)**
+```bash
+cd simulator/mitbih-replay
+python3 -m venv venv
+source venv/bin/activate
+pip install -r requirements.txt
+export KAFKA_BOOTSTRAP_SERVERS=localhost:9092
+python replay.py --record 100
+```
 
-   From repo root, with Docker installed:
+To test other records:
 
-   ```bash
-   chmod +x scripts/kafka/ensure-topics.sh && scripts/kafka/ensure-topics.sh
-   ```
+```bash
+python replay.py --record 101
+python replay.py --record 103
+```
 
-   This starts Kafka, creates `ecg.telemetry` and `ecg.alerts`, and lists topics.
+### 4) Start frontend
 
-2. **Start Kafka manually, or create topics and verify**
+```bash
+cd frontend/dashboard
+npm install
+npm run dev
+```
 
-   See [docs/kafka-local.md](docs/kafka-local.md) for:
-   - Creating `ecg.telemetry` and `ecg.alerts`
-   - Listing topics
-   - Using `kafka-console-consumer` / `kafka-console-producer` to verify
+Frontend default URL: [http://localhost:5173](http://localhost:5173)
 
-CI does not start Kafka; it only builds the code (e.g. `backend/*`, `frontend/*`).
+## Frontend Environment Variables
 
-## Later
+- `VITE_API_BASE_URL` (default: `http://localhost:5050`)
+- `VITE_SIGNALR_HUB_URL` (default: `http://localhost:5050/hubs/telemetry`)
 
-- **CI/CD:** GitHub Actions (e.g. build, test, optional lint) will be added in a later phase (Phase 4.5).
-- **Deployment:** Target (e.g. Azure) and deployment method to be documented when introduced. Badges and deployment instructions will be added then.
+## Backend API Overview
+
+### System status
+
+- `GET /api/system/status`
+- Includes: `streamStatus`, `activePatient`, `activeRecordId`, `bufferCount`, `lastMessageAt`
+
+### ECG data
+
+- `GET /api/ecg/latest?count=500&recordId=100`
+- `GET /api/ecg/window?count=800&windowSeconds=5&recordId=101&downsample=2`
+- `GET /api/ecg/events?count=30&recordId=103` (latest first, event-log friendly)
+
+### Alerts
+
+- `GET /api/alerts?count=20&recordId=100`
+- Returns timestamp-desc alerts with `severity`, `message`, and `heartRate`
+
+### Patient snapshot
+
+- `GET /api/patients/current`
+
+## Record Switching Behavior
+
+- Supported records: `100`, `101`, `103`
+- Dashboard record selector reloads record-scoped REST data
+- SignalR updates are filtered on the client by selected `recordId`
+- Invalid `recordId` on backend APIs returns `400`
+
+## Health Checks
+
+Use these commands to verify data flow:
+
+```bash
+curl -sS "http://localhost:5050/api/system/status"; echo
+curl -sS "http://localhost:5050/api/ecg/latest?recordId=100&count=5"; echo
+curl -sS "http://localhost:5050/api/ecg/events?recordId=100&count=5"; echo
+curl -sS "http://localhost:5050/api/alerts?recordId=100&count=5"; echo
+```
+
+If all arrays are empty and `streamStatus=stopped`, simulator is likely not publishing or Kafka/consumer is disconnected.
+
+## Troubleshooting
+
+- **Port 5050 already used**: `lsof -i :5050`
+- **No telemetry received**:
+  - verify simulator terminal is actively sending samples
+  - verify Kafka topic exists (`ecg.telemetry`)
+  - verify backend logs show consumer activity
+- **Frontend connected but no updates**:
+  - verify `VITE_SIGNALR_HUB_URL`
+  - check browser console for SignalR reconnect/disconnect logs
