@@ -123,11 +123,10 @@ CI jobs:
 
 - Frontend: `.github/workflows/deploy-frontend.yml`
   - Trigger: `push` to `main` (frontend paths) or manual dispatch
-  - Target: Azure Static Web Apps
-  - Azure portal preset: select `React` (this project still builds with Vite and outputs `dist`)
+  - Target: Vercel
 - Backend: `.github/workflows/deploy-backend.yml`
   - Trigger: `push` to `main` (backend paths) or manual dispatch
-  - Target: Azure App Service (Linux)
+  - Target: Render (Deploy Hook)
 
 ## GitHub Secrets
 
@@ -135,18 +134,18 @@ Configure in: **GitHub repo -> Settings -> Secrets and variables -> Actions**
 
 Required or optional keys used by workflows:
 
-- `AZURE_STATIC_WEB_APPS_API_TOKEN` (frontend deploy token)
+- `FRONTEND_DEPLOY_TOKEN` (Vercel token)
+- `FRONTEND_ORG_ID` (Vercel org id)
+- `FRONTEND_PROJECT_ID` (Vercel project id)
 - `VITE_API_BASE_URL_PROD` (frontend build-time API URL)
 - `VITE_SIGNALR_URL_PROD` (frontend build-time SignalR URL)
-- `AZURE_WEBAPP_PUBLISH_PROFILE` (backend App Service publish profile)
-- `BACKEND_APP_NAME` (backend App Service name, e.g. `cardioflow-api-prod`)
-- `AZURE_CLIENT_ID` / `AZURE_TENANT_ID` / `AZURE_SUBSCRIPTION_ID` (optional, if switching to OIDC auth)
+- `BACKEND_DEPLOY_TOKEN` (Render Deploy Hook URL)
 
 ## Live Demo
 
-- Frontend demo URL: [https://cardioflow-dashboard-prod.azurestaticapps.net](https://cardioflow-dashboard-prod.azurestaticapps.net)
-- Backend API URL: [https://cardioflow-api-prod.azurewebsites.net](https://cardioflow-api-prod.azurewebsites.net)
-- Current scope: frontend + backend deployed on Azure (simulator remains local)
+- Frontend demo URL: [https://your-vercel-project.vercel.app](https://your-vercel-project.vercel.app)
+- Backend API URL: [https://cardioflow-monitor.onrender.com](https://cardioflow-monitor.onrender.com)
+- Current scope: frontend on Vercel, backend on Render (simulator remains local)
 
 ## Frontend Environment Variables
 
