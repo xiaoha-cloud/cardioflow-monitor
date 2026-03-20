@@ -6,9 +6,9 @@ CardioFlow Monitor is a real-time ECG monitoring demo stack:
 - **Backend** consumes telemetry, performs anomaly detection, and exposes REST + SignalR
 - **Frontend** renders ECG chart, alerts, patient/device info, and event log
 
-![CI](https://github.com/your-org-or-user/cardioflow-monitor/actions/workflows/ci.yml/badge.svg)
-![Deploy Frontend](https://github.com/your-org-or-user/cardioflow-monitor/actions/workflows/deploy-frontend.yml/badge.svg)
-![Deploy Backend](https://github.com/your-org-or-user/cardioflow-monitor/actions/workflows/deploy-backend.yml/badge.svg)
+![CI](https://github.com/xiaoha-cloud/cardioflow-monitor/actions/workflows/ci.yml/badge.svg)
+![Deploy Frontend](https://github.com/xiaoha-cloud/cardioflow-monitor/actions/workflows/deploy-frontend.yml/badge.svg)
+![Deploy Backend](https://github.com/xiaoha-cloud/cardioflow-monitor/actions/workflows/deploy-backend.yml/badge.svg)
 
 ## Dashboard Screenshot
 
@@ -143,9 +143,13 @@ Required or optional keys used by workflows:
 
 ## Live Demo
 
-- Frontend demo URL: [https://your-vercel-project.vercel.app](https://your-vercel-project.vercel.app)
-- Backend API URL: [https://cardioflow-monitor.onrender.com](https://cardioflow-monitor.onrender.com)
-- Current scope: frontend on Vercel, backend on Render (simulator remains local)
+| Service | URL |
+|---|---|
+| 🖥️ Frontend (Vercel) | [https://cardioflow-monitor-gcqv.vercel.app](https://cardioflow-monitor-gcqv.vercel.app) |
+| ⚙️ Backend API (Render) | [https://cardioflow-monitor-1.onrender.com](https://cardioflow-monitor-1.onrender.com) |
+
+> **Note:** The backend runs on Render's free tier and may take ~50 seconds to wake up after inactivity.
+> Current scope: frontend on Vercel, backend on Render (simulator remains local — no live Kafka feed).
 
 ## Frontend Environment Variables
 
