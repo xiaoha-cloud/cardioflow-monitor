@@ -1,4 +1,5 @@
 using System.Text.Json;
+using System.Collections.Concurrent;
 using CardioFlow.Api.Hubs;
 using CardioFlow.Api.Models;
 using CardioFlow.Api.Services;
@@ -18,6 +19,7 @@ public class KafkaConsumerService : BackgroundService
     private readonly ITelemetryBufferService _bufferService;
     private readonly IAnomalyDetectionService _anomalyDetectionService;
     private readonly IAlertService _alertService;
+    private readonly IStatusAggregationService _statusAggregationService;
     private readonly IHubContext<TelemetryHub> _hubContext;
     private IConsumer<string, string>? _consumer;
     private readonly string _bootstrapServers;
@@ -25,6 +27,7 @@ public class KafkaConsumerService : BackgroundService
     private readonly string _topic;
     private int _messagesConsumed;
     private int _messagesFailed;
+    private readonly ConcurrentDictionary<string, int> _lastBeatSampleBySource = new();
 
     /// <summary>
     /// Initializes a new instance of the KafkaConsumerService.
@@ -35,6 +38,7 @@ public class KafkaConsumerService : BackgroundService
         ITelemetryBufferService bufferService,
         IAnomalyDetectionService anomalyDetectionService,
         IAlertService alertService,
+        IStatusAggregationService statusAggregationService,
         IHubContext<TelemetryHub> hubContext)
     {
         _logger = logger;
@@ -42,6 +46,7 @@ public class KafkaConsumerService : BackgroundService
         _bufferService = bufferService;
         _anomalyDetectionService = anomalyDetectionService;
         _alertService = alertService;
+        _statusAggregationService = statusAggregationService;
         _hubContext = hubContext;
 
         // Read Kafka configuration from appsettings.json or environment variables
@@ -97,6 +102,7 @@ public class KafkaConsumerService : BackgroundService
                 if (_consumer == null)
                 {
                     _logger.LogWarning("Consumer is null, attempting to reinitialize...");
+                    _statusAggregationService.ReportConsumerReconnecting();
                     await InitializeConsumerAsync();
                     await Task.Delay(5000, stoppingToken); // Wait before retrying
                     continue;
@@ -113,6 +119,7 @@ public class KafkaConsumerService : BackgroundService
             catch (ConsumeException ex)
             {
                 _messagesFailed++;
+                _statusAggregationService.ReportConsumerError();
                 _logger.LogError(ex, "Error consuming message from Kafka: {Error}", ex.Error.Reason);
 
                 // If it's a fatal error, try to reinitialize
@@ -125,12 +132,14 @@ public class KafkaConsumerService : BackgroundService
             catch (KafkaException ex)
             {
                 _messagesFailed++;
+                _statusAggregationService.ReportConsumerError();
                 _logger.LogError(ex, "Kafka exception occurred: {Message}", ex.Message);
                 await ReinitializeConsumerAsync(stoppingToken);
             }
             catch (Exception ex)
             {
                 _messagesFailed++;
+                _statusAggregationService.ReportConsumerError();
                 _logger.LogError(ex, "Unexpected error in consumer loop: {Message}", ex.Message);
                 await Task.Delay(5000, stoppingToken); // Wait before continuing
             }
@@ -191,6 +200,7 @@ public class KafkaConsumerService : BackgroundService
                 .SetErrorHandler((_, e) =>
                 {
                     _logger.LogError("Kafka consumer error: {Reason}", e.Reason);
+                    _statusAggregationService.ReportConsumerError();
                 })
                 .SetLogHandler((_, message) =>
                 {
@@ -203,6 +213,7 @@ public class KafkaConsumerService : BackgroundService
             _logger.LogInformation(
                 "Kafka consumer initialized and subscribed to topic: {Topic}",
                 _topic);
+            _statusAggregationService.ReportConsumerConnected();
 
             // Small delay to ensure subscription is complete
             await Task.Delay(1000);
@@ -233,6 +244,7 @@ public class KafkaConsumerService : BackgroundService
         }
 
         _consumer = null;
+        _statusAggregationService.ReportConsumerReconnecting();
 
         // Exponential backoff: wait 1s, 2s, 4s, etc. (max 30s)
         var waitTime = Math.Min(30000, (int)Math.Pow(2, _messagesFailed / 10) * 1000);
@@ -255,53 +267,69 @@ public class KafkaConsumerService : BackgroundService
     /// </summary>
     private async Task ProcessMessageAsync(string jsonMessage, CancellationToken cancellationToken)
     {
+        TelemetryMessage? telemetryMessage = null;
         try
         {
-            // Deserialize JSON message
-            var options = new JsonSerializerOptions
-            {
-                PropertyNameCaseInsensitive = true,
-                AllowTrailingCommas = true
-            };
-
-            var telemetryMessage = JsonSerializer.Deserialize<TelemetryMessage>(jsonMessage, options);
-
+            // Consumption chain (failure-isolated):
+            // 1) Deserialize -> 2) RR enrichment -> 3) Buffer add
+            // -> 4) Rule evaluation -> 5) Alert store -> 6) Status update
+            // -> 7) SignalR push. Any step failure should not stop the loop.
+            // 1) Deserialize
+            telemetryMessage = DeserializeTelemetry(jsonMessage);
             if (telemetryMessage == null)
             {
-                _logger.LogWarning("Failed to deserialize message: {Message}", jsonMessage);
                 _messagesFailed++;
                 return;
             }
+            EnrichRrInterval(telemetryMessage);
 
-            // Add to buffer
-            _bufferService.Add(telemetryMessage);
-            await TryBroadcastAsync("ReceiveTelemetry", telemetryMessage, cancellationToken);
+            // 2) Buffer add
+            try
+            {
+                _bufferService.Add(telemetryMessage);
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(
+                    ex,
+                    "Buffer add failed for sampleIndex={SampleIndex}. Telemetry consumption continues.",
+                    telemetryMessage.SampleIndex);
+            }
 
-            // Detect and store alerts based on telemetry payload.
+            // 3) Rule evaluation + 4) Alert store
             try
             {
                 var alerts = _anomalyDetectionService.DetectAlerts(telemetryMessage);
                 foreach (var alert in alerts)
                 {
                     _alertService.AddAlert(alert);
-                    await TryBroadcastAsync("ReceiveAlert", alert, cancellationToken);
                     _logger.LogInformation(
-                        "Alert generated: patientId={PatientId}, sampleIndex={SampleIndex}, annotation={Annotation}, severity={Severity}, message={Message}",
+                        "Alert generated: patientId={PatientId}, recordId={RecordId}, sampleIndex={SampleIndex}, annotation={Annotation}, severity={Severity}, sourceRule={SourceRule}",
                         alert.PatientId,
+                        alert.RecordId,
                         alert.SampleIndex,
                         alert.Annotation,
                         alert.Severity,
-                        alert.Message);
+                        alert.SourceRule);
+
+                    // 6) Realtime push for alert
+                    await TryBroadcastAsync("ReceiveAlert", alert, cancellationToken);
                 }
             }
             catch (Exception ex)
             {
                 _logger.LogError(
                     ex,
-                    "Alert processing failed for sampleIndex={SampleIndex}, annotation={Annotation}. Telemetry consumption continues.",
+                    "Anomaly detection pipeline failed for sampleIndex={SampleIndex}, annotation={Annotation}. Telemetry consumption continues.",
                     telemetryMessage.SampleIndex,
                     telemetryMessage.Annotation);
             }
+
+            // 5) Status update
+            _statusAggregationService.UpdateWithTelemetry(telemetryMessage);
+
+            // 6) Realtime push for telemetry and status
+            await TryBroadcastAsync("ReceiveTelemetry", telemetryMessage, cancellationToken);
 
             _messagesConsumed++;
 
@@ -316,7 +344,7 @@ public class KafkaConsumerService : BackgroundService
                     telemetryMessage.Annotation,
                     _bufferService.GetCount());
 
-                await TryBroadcastAsync("ReceiveSystemStatus", BuildSystemStatus(), cancellationToken);
+                await TryBroadcastAsync("ReceiveSystemStatus", _statusAggregationService.GetCurrentStatus(), cancellationToken);
             }
             else
             {
@@ -330,46 +358,87 @@ public class KafkaConsumerService : BackgroundService
         catch (JsonException ex)
         {
             _messagesFailed++;
+            _statusAggregationService.ReportConsumerError();
             _logger.LogError(ex, "JSON deserialization error: {Message}", ex.Message);
         }
         catch (Exception ex)
         {
             _messagesFailed++;
+            _statusAggregationService.ReportConsumerError();
             _logger.LogError(ex, "Error processing message: {Message}", ex.Message);
         }
 
-        await Task.CompletedTask;
     }
 
-    private SystemStatusDto BuildSystemStatus()
+    private TelemetryMessage? DeserializeTelemetry(string jsonMessage)
     {
-        var latestTelemetry = _bufferService.GetLatest(1).FirstOrDefault();
-        var activeRecordId = _bufferService.GetLatestRecordId();
-        var bufferCount = _bufferService.GetCount();
-        var lastMessageAt = _bufferService.GetLastMessageAt();
-        var now = DateTime.UtcNow;
-
-        var streamStatus = "stopped";
-        if (bufferCount > 0)
+        var options = new JsonSerializerOptions
         {
-            streamStatus = lastMessageAt.HasValue && now - lastMessageAt.Value <= TimeSpan.FromSeconds(30)
-                ? "running"
-                : "idle";
+            PropertyNameCaseInsensitive = true,
+            AllowTrailingCommas = true
+        };
+
+        var telemetryMessage = JsonSerializer.Deserialize<TelemetryMessage>(jsonMessage, options);
+        if (telemetryMessage == null)
+        {
+            _logger.LogWarning("Failed to deserialize message: {Message}", jsonMessage);
+            return null;
         }
 
-        return new SystemStatusDto
+        if (telemetryMessage.ReceivedAt == null)
         {
-            StreamStatus = streamStatus,
-            SamplingRate = _configuration.GetValue<int>("Telemetry:SamplingRate", 360),
-            Topic = _configuration["Kafka:TelemetryTopic"] ?? "ecg.telemetry",
-            ActivePatient = latestTelemetry?.PatientId,
-            ActiveRecord = activeRecordId,
-            ActiveRecordId = activeRecordId,
-            DeviceId = latestTelemetry?.DeviceId,
-            LastAlert = _alertService.GetLastAlert()?.Message,
-            BufferCount = bufferCount,
-            LastMessageAt = lastMessageAt
-        };
+            telemetryMessage.ReceivedAt = DateTime.UtcNow;
+        }
+
+        if (string.IsNullOrWhiteSpace(telemetryMessage.SignalQuality))
+        {
+            telemetryMessage.SignalQuality = "unknown";
+        }
+
+        if (string.IsNullOrWhiteSpace(telemetryMessage.PatientId) ||
+            string.IsNullOrWhiteSpace(telemetryMessage.RecordId) ||
+            string.IsNullOrWhiteSpace(telemetryMessage.DeviceId))
+        {
+            _logger.LogWarning(
+                "Telemetry message missing required identity fields. patientId={PatientId}, recordId={RecordId}, deviceId={DeviceId}",
+                telemetryMessage.PatientId,
+                telemetryMessage.RecordId,
+                telemetryMessage.DeviceId);
+            return null;
+        }
+
+        return telemetryMessage;
+    }
+
+    private void EnrichRrInterval(TelemetryMessage telemetryMessage)
+    {
+        // RR interval is calculated only on beat-like annotations.
+        // Unit: ms = (sample delta / samplingRate[Hz]) * 1000.
+        // Boundary guards: skip non-positive deltas; clamp unrealistic long gaps (>5000ms) to null.
+        if (!IsBeatAnnotation(telemetryMessage.Annotation))
+        {
+            return;
+        }
+
+        var key = $"{telemetryMessage.PatientId}|{telemetryMessage.RecordId}|{telemetryMessage.DeviceId}";
+        if (_lastBeatSampleBySource.TryGetValue(key, out var previousSampleIndex))
+        {
+            var delta = telemetryMessage.SampleIndex - previousSampleIndex;
+            if (delta > 0)
+            {
+                var samplingRate = _configuration.GetValue<double>("Telemetry:SamplingRate", 360d);
+                var rrMs = delta / samplingRate * 1000d;
+                telemetryMessage.RrIntervalMs = rrMs is > 0 and <= 5000 ? rrMs : null;
+            }
+        }
+
+        _lastBeatSampleBySource[key] = telemetryMessage.SampleIndex;
+    }
+
+    private static bool IsBeatAnnotation(string? annotation)
+    {
+        var value = (annotation ?? string.Empty).Trim().ToUpperInvariant();
+        return value is "N" or "V" or "A" or "L" or "R" or "E" or "F" or "Q";
     }
 
     private async Task TryBroadcastAsync(string eventName, object payload, CancellationToken cancellationToken)

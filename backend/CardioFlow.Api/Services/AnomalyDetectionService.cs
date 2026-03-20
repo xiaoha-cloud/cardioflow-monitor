@@ -4,13 +4,25 @@ namespace CardioFlow.Api.Services;
 
 public class AnomalyDetectionService : IAnomalyDetectionService
 {
-    private readonly int _hrHighThreshold;
-    private readonly int _hrLowThreshold;
+    private readonly ILogger<AnomalyDetectionService> _logger;
+    private readonly IReadOnlyList<IAlertRule> _rules;
+    private readonly DetectionContext _detectionContext;
 
-    public AnomalyDetectionService(IConfiguration configuration)
+    public AnomalyDetectionService(
+        IConfiguration configuration,
+        IEnumerable<IAlertRule> rules,
+        ILogger<AnomalyDetectionService> logger)
     {
-        _hrHighThreshold = configuration.GetValue<int>("Alerts:HrHighThreshold", 120);
-        _hrLowThreshold = configuration.GetValue<int>("Alerts:HrLowThreshold", 45);
+        _logger = logger;
+        _rules = rules.ToList();
+        _detectionContext = new DetectionContext
+        {
+            HrHighThreshold = configuration.GetValue<int>("DetectionRules:HrHighThreshold", 120),
+            HrLowThreshold = configuration.GetValue<int>("DetectionRules:HrLowThreshold", 45),
+            RrLowMs = configuration.GetValue<int>("DetectionRules:RrLowMs", 400),
+            RrHighMs = configuration.GetValue<int>("DetectionRules:RrHighMs", 1200),
+            EnableRrRule = configuration.GetValue<bool>("DetectionRules:EnableRrRule", true)
+        };
     }
 
     public IReadOnlyList<AlertMessage> DetectAlerts(TelemetryMessage telemetryMessage)
@@ -20,83 +32,99 @@ public class AnomalyDetectionService : IAnomalyDetectionService
             return Array.Empty<AlertMessage>();
         }
 
-        var annotation = telemetryMessage.Annotation?.Trim().ToUpperInvariant() ?? string.Empty;
-        var reasons = new List<string>();
-        var severity = "normal";
-
-        if (telemetryMessage.HeartRate.HasValue && telemetryMessage.HeartRate.Value > _hrHighThreshold)
+        // Rule execution order is deterministic (DI registration order),
+        // but merge strategy always keeps one winner by highest severity:
+        // critical > warning > normal.
+        var candidates = new List<(IAlertRule Rule, AlertCandidate Candidate)>();
+        foreach (var rule in _rules)
         {
-            severity = "critical";
-            reasons.Add("Tachycardia threshold exceeded");
-        }
-        else if (telemetryMessage.HeartRate.HasValue && telemetryMessage.HeartRate.Value < _hrLowThreshold)
-        {
-            severity = "critical";
-            reasons.Add("Bradycardia threshold exceeded");
-        }
-
-        var annotationRule = annotation switch
-        {
-            "V" => ("warning", "PVC detected"),
-            "A" => ("warning", "Atrial premature beat detected"),
-            "E" => ("warning", "Ventricular escape beat detected"),
-            "F" => ("warning", "Fusion beat detected"),
-            "Q" => ("warning", "Unclassifiable beat detected"),
-            _ => ((string?)null, (string?)null)
-        };
-
-        if (annotationRule.Item1 is not null)
-        {
-            severity = MaxSeverity(severity, annotationRule.Item1);
-            reasons.Add(annotationRule.Item2!);
+            try
+            {
+                var result = rule.Evaluate(telemetryMessage, _detectionContext);
+                if (result != null)
+                {
+                    candidates.Add((rule, result));
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogWarning(
+                    ex,
+                    "Alert rule evaluation failed. ruleName={RuleName}, sampleIndex={SampleIndex}",
+                    rule.Name,
+                    telemetryMessage.SampleIndex);
+            }
         }
 
-        if (severity == "normal" &&
-            string.Equals(telemetryMessage.Status, "abnormal", StringComparison.OrdinalIgnoreCase))
-        {
-            severity = "warning";
-            reasons.Add("Abnormal telemetry status detected");
-        }
-
-        if (severity == "normal")
+        if (candidates.Count == 0)
         {
             return Array.Empty<AlertMessage>();
         }
 
-        var message = string.Join("; ", reasons.Distinct(StringComparer.Ordinal));
-        return new[] { BuildAlert(telemetryMessage, severity, message) };
-    }
+        var winner = candidates
+            .OrderByDescending(item => SeverityRank(item.Candidate.Severity))
+            .First();
+        var matchedRuleNames = candidates.Select(item => item.Rule.Name).Distinct(StringComparer.Ordinal).ToArray();
 
-    private static string MaxSeverity(string a, string b)
-    {
-        var rankA = SeverityRank(a);
-        var rankB = SeverityRank(b);
-        return rankA >= rankB ? a : b;
-    }
+        _logger.LogInformation(
+            "Alert selected. ruleName={RuleName}, sampleIndex={SampleIndex}, severity={Severity}, message={Message}",
+            winner.Rule.Name,
+            telemetryMessage.SampleIndex,
+            winner.Candidate.Severity,
+            winner.Candidate.Message);
 
-    private static int SeverityRank(string value)
-    {
-        return value switch
+        return new[]
         {
-            "critical" => 3,
-            "warning" => 2,
-            "info" => 1,
-            _ => 0
+            BuildAlert(telemetryMessage, winner.Candidate, matchedRuleNames)
         };
     }
 
-    private static AlertMessage BuildAlert(TelemetryMessage telemetryMessage, string severity, string message)
+    private static AlertMessage BuildAlert(
+        TelemetryMessage telemetryMessage,
+        AlertCandidate candidate,
+        IReadOnlyCollection<string> matchedRuleNames)
     {
         return new AlertMessage
         {
             PatientId = telemetryMessage.PatientId,
+            RecordId = telemetryMessage.RecordId,
             DeviceId = telemetryMessage.DeviceId,
             Timestamp = telemetryMessage.Timestamp,
+            ReceivedAt = telemetryMessage.ReceivedAt,
             SampleIndex = telemetryMessage.SampleIndex,
             Annotation = telemetryMessage.Annotation,
-            Severity = severity,
-            Message = message,
-            HeartRate = telemetryMessage.HeartRate
+            Severity = NormalizeSeverity(candidate.Severity),
+            Message = candidate.Message,
+            SourceRule = candidate.SourceRule,
+            HeartRate = telemetryMessage.HeartRate,
+            RrIntervalMs = telemetryMessage.RrIntervalMs,
+            Metadata = new Dictionary<string, string>
+            {
+                ["matchedRules"] = string.Join(",", matchedRuleNames),
+                ["matchedCount"] = matchedRuleNames.Count.ToString()
+            }
+        };
+    }
+
+    private static string NormalizeSeverity(string? value)
+    {
+        return value?.ToLowerInvariant() switch
+        {
+            "critical" => "critical",
+            "warning" => "warning",
+            "normal" => "normal",
+            _ => "warning"
+        };
+    }
+
+    private static int SeverityRank(string? value)
+    {
+        return NormalizeSeverity(value) switch
+        {
+            "critical" => 3,
+            "warning" => 2,
+            "normal" => 1,
+            _ => 0
         };
     }
 }

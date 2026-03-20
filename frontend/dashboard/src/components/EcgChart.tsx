@@ -32,6 +32,10 @@ export default function EcgChart({
   maxRenderPoints,
   onWindowChange
 }: Props) {
+  // Window strategy:
+  // 1) keep only the latest N seconds by sample index
+  // 2) downsample with stride so render points stay below maxRenderPoints
+  // This prevents chart jank under high-frequency telemetry.
   const windowPointLimit = Math.max(1, Math.floor(samplingRate * windowSeconds));
 
   if (!data.length) {

@@ -27,7 +27,11 @@ if (builder.Environment.IsDevelopment())
 // Register TelemetryBufferService as Singleton
 builder.Services.AddSingleton<ITelemetryBufferService, TelemetryBufferService>();
 builder.Services.AddSingleton<IAlertService, AlertService>();
+builder.Services.AddSingleton<IAlertRule, AnnotationAlertRule>();
+builder.Services.AddSingleton<IAlertRule, HeartRateThresholdRule>();
+builder.Services.AddSingleton<IAlertRule, RrIntervalRule>();
 builder.Services.AddSingleton<IAnomalyDetectionService, AnomalyDetectionService>();
+builder.Services.AddSingleton<IStatusAggregationService, StatusAggregationService>();
 
 // Register Kafka Consumer Background Service
 builder.Services.AddHostedService<KafkaConsumerService>();

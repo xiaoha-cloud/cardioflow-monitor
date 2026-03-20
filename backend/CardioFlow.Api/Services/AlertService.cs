@@ -7,12 +7,10 @@ public class AlertService : IAlertService
 {
     private readonly ConcurrentQueue<AlertMessage> _alerts = new();
     private readonly int _maxSize;
-    private readonly ITelemetryBufferService _bufferService;
 
-    public AlertService(IConfiguration configuration, ITelemetryBufferService bufferService)
+    public AlertService(IConfiguration configuration)
     {
         _maxSize = configuration.GetValue<int>("Alerts:MaxBufferSize", 100);
-        _bufferService = bufferService;
     }
 
     public void AddAlert(AlertMessage alert)
@@ -61,26 +59,11 @@ public class AlertService : IAlertService
         {
             return Array.Empty<AlertMessage>();
         }
-
-        var recordTelemetry = _bufferService.GetLatestByRecord(1000, recordId);
-        var patientIds = recordTelemetry
-            .Select(m => m.PatientId)
-            .Where(id => !string.IsNullOrWhiteSpace(id))
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
-        var samplesByRecord = recordTelemetry
-            .Select(m => (m.Timestamp, m.SampleIndex, m.PatientId))
-            .ToHashSet();
-
-        if (samplesByRecord.Count == 0 && patientIds.Count == 0)
-        {
-            return Array.Empty<AlertMessage>();
-        }
+        var normalizedRecordId = recordId.Trim();
 
         return _alerts
             .ToArray()
-            .Where(a =>
-                samplesByRecord.Contains((a.Timestamp, a.SampleIndex, a.PatientId)) ||
-                patientIds.Contains(a.PatientId))
+            .Where(a => string.Equals(a.RecordId, normalizedRecordId, StringComparison.OrdinalIgnoreCase))
             .OrderByDescending(a => a.Timestamp)
             .ThenByDescending(a => a.SampleIndex)
             .Take(count)

@@ -33,6 +33,13 @@ public class TelemetryMessage
     public DateTime Timestamp { get; set; }
 
     /// <summary>
+    /// Timestamp when backend received this message.
+    /// Nullable for backward compatibility with existing payloads.
+    /// </summary>
+    [JsonPropertyName("receivedAt")]
+    public DateTime? ReceivedAt { get; set; }
+
+    /// <summary>
     /// Sample index position in the ECG record.
     /// </summary>
     [JsonPropertyName("sampleIndex")]
@@ -66,11 +73,30 @@ public class TelemetryMessage
     /// Signal quality indicator (e.g., "good", "fair", "poor").
     /// </summary>
     [JsonPropertyName("signalQuality")]
-    public string SignalQuality { get; set; } = string.Empty;
+    public string? SignalQuality { get; set; } = "unknown";
 
     /// <summary>
     /// Battery level percentage (0-100).
     /// </summary>
     [JsonPropertyName("battery")]
-    public int Battery { get; set; }
+    public int? Battery { get; set; }
+
+    /// <summary>
+    /// RR interval in milliseconds. Nullable when not available.
+    /// </summary>
+    [JsonPropertyName("rrIntervalMs")]
+    public double? RrIntervalMs { get; set; }
+
+    /// <summary>
+    /// True when this telemetry sample is derived rather than directly measured.
+    /// Nullable for backward compatibility.
+    /// </summary>
+    [JsonPropertyName("isDerived")]
+    public bool? IsDerived { get; set; }
+
+    /// <summary>
+    /// Optional derived metrics container.
+    /// </summary>
+    [JsonPropertyName("derivedMetrics")]
+    public DerivedMetricsDto? DerivedMetrics { get; set; }
 }

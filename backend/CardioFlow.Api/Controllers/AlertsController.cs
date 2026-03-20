@@ -21,6 +21,8 @@ public class AlertsController : ControllerBase
     }
 
     [HttpGet]
+    [ProducesResponseType(typeof(IReadOnlyList<AlertMessage>), StatusCodes.Status200OK)]
+    [ProducesResponseType(StatusCodes.Status400BadRequest)]
     public ActionResult<IReadOnlyList<AlertMessage>> GetLatest(
         [FromQuery] int count = DefaultCount,
         [FromQuery] string? recordId = null)

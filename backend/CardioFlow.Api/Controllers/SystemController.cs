@@ -8,51 +8,18 @@ namespace CardioFlow.Api.Controllers;
 [Route("api/system")]
 public class SystemController : ControllerBase
 {
-    private readonly ITelemetryBufferService _bufferService;
-    private readonly IAlertService _alertService;
-    private readonly IConfiguration _configuration;
+    private readonly IStatusAggregationService _statusAggregationService;
 
     public SystemController(
-        ITelemetryBufferService bufferService,
-        IAlertService alertService,
-        IConfiguration configuration)
+        IStatusAggregationService statusAggregationService)
     {
-        _bufferService = bufferService;
-        _alertService = alertService;
-        _configuration = configuration;
+        _statusAggregationService = statusAggregationService;
     }
 
     [HttpGet("status")]
+    [ProducesResponseType(typeof(SystemStatusDto), StatusCodes.Status200OK)]
     public ActionResult<SystemStatusDto> GetStatus()
     {
-        var latestTelemetry = _bufferService.GetLatest(1).FirstOrDefault();
-        var activeRecordId = _bufferService.GetLatestRecordId();
-        var bufferCount = _bufferService.GetCount();
-        var lastMessageAt = _bufferService.GetLastMessageAt();
-        var now = DateTime.UtcNow;
-
-        var streamStatus = "stopped";
-        if (bufferCount > 0)
-        {
-            streamStatus = lastMessageAt.HasValue && now - lastMessageAt.Value <= TimeSpan.FromSeconds(30)
-                ? "running"
-                : "idle";
-        }
-
-        var dto = new SystemStatusDto
-        {
-            StreamStatus = streamStatus,
-            SamplingRate = _configuration.GetValue<int>("Telemetry:SamplingRate", 360),
-            Topic = _configuration["Kafka:TelemetryTopic"] ?? "ecg.telemetry",
-            ActivePatient = latestTelemetry?.PatientId,
-            ActiveRecord = activeRecordId,
-            ActiveRecordId = activeRecordId,
-            DeviceId = latestTelemetry?.DeviceId,
-            LastAlert = _alertService.GetLastAlert()?.Message,
-            BufferCount = bufferCount,
-            LastMessageAt = lastMessageAt
-        };
-
-        return Ok(dto);
+        return Ok(_statusAggregationService.GetCurrentStatus());
     }
 }

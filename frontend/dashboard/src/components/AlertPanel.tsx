@@ -25,6 +25,7 @@ function normalizeSeverity(value: string | null | undefined): "normal" | "warnin
 }
 
 export default function AlertPanel({ alerts }: Props) {
+  // UI safety cap: always render at most 50 newest alerts in panel.
   const visibleAlerts = alerts.slice(0, 50);
 
   return (
@@ -36,16 +37,20 @@ export default function AlertPanel({ alerts }: Props) {
         <div className="alerts-scroll">
           <ul className="alerts-list">
             {visibleAlerts.map((alert) => (
-              <li key={`${alert.timestamp}-${alert.sampleIndex}-${alert.annotation}-${alert.message}`} className="alert-item">
+              <li key={`${alert.timestamp}-${alert.sampleIndex}-${alert.message}-${alert.sourceRule || "unknown"}`} className="alert-item">
                 <span className="alert-time">{formatTime(alert.timestamp)}</span>
                 <span className="alert-annotation">{alert.annotation || "-"}</span>
                 <span className={`severity-tag severity-${normalizeSeverity(alert.severity)}`}>
                   {normalizeSeverity(alert.severity)}
                 </span>
                 <span className="alert-hr">
-                  HR: {alert.heartRate ?? "-"}
+                  HR: {alert.heartRate ?? "--"}
+                </span>
+                <span className="alert-rr">
+                  RR: {alert.rrIntervalMs == null ? "-- ms" : `${Math.round(alert.rrIntervalMs)} ms`}
                 </span>
                 <span className="alert-message">{alert.message || "Abnormal ECG event"}</span>
+                <span className="alert-rule">{alert.sourceRule || "unknown"}</span>
               </li>
             ))}
           </ul>

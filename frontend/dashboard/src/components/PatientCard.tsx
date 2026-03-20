@@ -1,7 +1,7 @@
-import type { PatientSnapshot } from "../types/telemetry";
+import type { CurrentPatient } from "../types/telemetry";
 
 type Props = {
-  patient: PatientSnapshot | null;
+  patient: CurrentPatient | null;
 };
 
 type Field = {
@@ -19,8 +19,9 @@ function qualityClass(quality: string): string {
 
 export default function PatientCard({ patient }: Props) {
   const batteryValue = patient?.battery ?? null;
-  const batteryText = batteryValue === null ? "-" : `${batteryValue}%`;
-  const signalQuality = patient?.signalQuality ?? "-";
+  const batteryText = batteryValue === null ? "--%" : `${batteryValue}%`;
+  const signalQuality = patient?.signalQuality ?? "unknown";
+  const rrIntervalText = patient?.rrIntervalMs == null ? "-- ms" : `${patient.rrIntervalMs.toFixed(1)} ms`;
   const fields: Field[] = [
     { label: "Patient ID", value: patient?.patientId || "-" },
     { label: "Record ID", value: patient?.recordId || "-" },
@@ -53,6 +54,10 @@ export default function PatientCard({ patient }: Props) {
         <div className="kv-item">
           <p className="kv-label">Signal Quality</p>
           <span className={`quality-badge quality-${qualityClass(signalQuality)}`}>{signalQuality}</span>
+        </div>
+        <div className="kv-item">
+          <p className="kv-label">RR Interval</p>
+          <p className="kv-value">{rrIntervalText}</p>
         </div>
       </div>
     </section>
