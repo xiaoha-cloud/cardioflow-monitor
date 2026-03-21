@@ -24,7 +24,7 @@ jobs:
       - name: Setup Node
         uses: actions/setup-node@v4
         with:
-          node-version: "20.11.1"
+          node-version: "22"
           cache: npm
           cache-dependency-path: frontend/dashboard/package-lock.json
 
@@ -46,6 +46,12 @@ jobs:
           fi
           npm run build
 
+      - name: Prepare Vercel output structure
+        run: |
+          mkdir -p .vercel/output/static
+          cp -r dist/. .vercel/output/static/
+          echo '{"version":3}' > .vercel/output/config.json
+
       - name: Deploy to Vercel (Production)
         env:
           VERCEL_TOKEN: ${{ secrets.FRONTEND_DEPLOY_TOKEN }}
@@ -56,7 +62,4 @@ jobs:
             echo "Missing required secrets: FRONTEND_DEPLOY_TOKEN / FRONTEND_ORG_ID / FRONTEND_PROJECT_ID"
             exit 1
           fi
-          npm i -g vercel
-          vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
-          vercel build --prod --token="$VERCEL_TOKEN"
-          vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+          npx vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
