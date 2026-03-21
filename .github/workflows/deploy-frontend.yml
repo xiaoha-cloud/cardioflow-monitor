@@ -22,19 +22,19 @@ jobs:
         uses: actions/setup-node@v4
         with:
           node-version: "22"
-          cache: npm
-          cache-dependency-path: frontend/dashboard/package-lock.json
 
-      - name: Install dependencies
-        working-directory: frontend/dashboard
-        run: npm ci
-
-      - name: Build
-        working-directory: frontend/dashboard
+      - name: Validate required secrets
         env:
+          VERCEL_TOKEN: ${{ secrets.FRONTEND_DEPLOY_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.FRONTEND_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.FRONTEND_PROJECT_ID }}
           VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL_PROD }}
           VITE_SIGNALR_URL: ${{ secrets.VITE_SIGNALR_URL_PROD }}
         run: |
+          if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_ORG_ID" ] || [ -z "$VERCEL_PROJECT_ID" ]; then
+            echo "Missing: FRONTEND_DEPLOY_TOKEN / FRONTEND_ORG_ID / FRONTEND_PROJECT_ID"
+            exit 1
+          fi
           if [ -z "$VITE_API_BASE_URL" ]; then
             echo "Missing required secret: VITE_API_BASE_URL_PROD"
             exit 1
@@ -43,28 +43,30 @@ jobs:
             echo "Missing required secret: VITE_SIGNALR_URL_PROD"
             exit 1
           fi
-          npm run build
 
-      # Vercel project Root Directory = frontend/dashboard
-      # So .vercel/output must live inside frontend/dashboard/
-      # and vercel deploy --prebuilt must run from REPO ROOT (not the sub-dir)
-      - name: Prepare Vercel output structure
-        working-directory: frontend/dashboard
-        run: |
-          mkdir -p .vercel/output/static
-          cp -r dist/. .vercel/output/static/
-          echo '{"version":3}' > .vercel/output/config.json
+      # All Vercel CLI steps run from REPO ROOT (no working-directory).
+      # Vercel reads Root Directory = frontend/dashboard from project settings,
+      # builds there, and places .vercel/output at the repo root.
 
-      - name: Deploy to Vercel (Production)
-        # Run from repo root so Vercel resolves Root Directory (frontend/dashboard)
-        # and finds frontend/dashboard/.vercel/output correctly
+      - name: Pull Vercel environment information
         env:
           VERCEL_TOKEN: ${{ secrets.FRONTEND_DEPLOY_TOKEN }}
           VERCEL_ORG_ID: ${{ secrets.FRONTEND_ORG_ID }}
           VERCEL_PROJECT_ID: ${{ secrets.FRONTEND_PROJECT_ID }}
-        run: |
-          if [ -z "$VERCEL_TOKEN" ] || [ -z "$VERCEL_ORG_ID" ] || [ -z "$VERCEL_PROJECT_ID" ]; then
-            echo "Missing required secrets: FRONTEND_DEPLOY_TOKEN / FRONTEND_ORG_ID / FRONTEND_PROJECT_ID"
-            exit 1
-          fi
-          npx vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
+        run: npx vercel pull --yes --environment=production --token="$VERCEL_TOKEN"
+
+      - name: Build project artifacts
+        env:
+          VERCEL_TOKEN: ${{ secrets.FRONTEND_DEPLOY_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.FRONTEND_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.FRONTEND_PROJECT_ID }}
+          VITE_API_BASE_URL: ${{ secrets.VITE_API_BASE_URL_PROD }}
+          VITE_SIGNALR_URL: ${{ secrets.VITE_SIGNALR_URL_PROD }}
+        run: npx vercel build --prod --token="$VERCEL_TOKEN"
+
+      - name: Deploy to Vercel (Production)
+        env:
+          VERCEL_TOKEN: ${{ secrets.FRONTEND_DEPLOY_TOKEN }}
+          VERCEL_ORG_ID: ${{ secrets.FRONTEND_ORG_ID }}
+          VERCEL_PROJECT_ID: ${{ secrets.FRONTEND_PROJECT_ID }}
+        run: npx vercel deploy --prebuilt --prod --token="$VERCEL_TOKEN"
