@@ -1,3 +1,4 @@
+import { useId } from "react";
 import type { AlertMessage } from "../types/telemetry";
 
 type Props = {
@@ -25,7 +26,7 @@ function normalizeSeverity(value: string | null | undefined): "normal" | "warnin
 }
 
 export default function AlertPanel({ alerts }: Props) {
-  // UI safety cap: always render at most 50 newest alerts in panel.
+  const panelId = useId();
   const visibleAlerts = alerts.slice(0, 50);
 
   return (
@@ -36,20 +37,35 @@ export default function AlertPanel({ alerts }: Props) {
       ) : (
         <div className="alerts-scroll">
           <ul className="alerts-list">
-            {visibleAlerts.map((alert) => (
-              <li key={`${alert.timestamp}-${alert.sampleIndex}-${alert.message}-${alert.sourceRule || "unknown"}`} className="alert-item">
-                <span className="alert-time">{formatTime(alert.timestamp)}</span>
-                <span className="alert-annotation">{alert.annotation || "-"}</span>
-                <span className={`severity-tag severity-${normalizeSeverity(alert.severity)}`}>
-                  {normalizeSeverity(alert.severity)}
-                </span>
-                <span className="alert-hr">
-                  HR: {alert.heartRate ?? "--"}
-                </span>
-                <span className="alert-rr">
-                  RR: {alert.rrIntervalMs == null ? "-- ms" : `${Math.round(alert.rrIntervalMs)} ms`}
-                </span>
-                <span className="alert-message">{alert.message || "Abnormal ECG event"}</span>
+            {visibleAlerts.map((alert, index) => (
+              <li
+                key={`${panelId}-${alert.timestamp}-${alert.sampleIndex}-${alert.message}-${alert.sourceRule || "unknown"}-${index}`}
+                className="alert-item"
+              >
+                <div className="alert-item-meta">
+                  <span className="alert-time">{formatTime(alert.timestamp)}</span>
+                  <span className="alert-annotation">{alert.annotation || "-"}</span>
+                  <span className={`severity-tag severity-${normalizeSeverity(alert.severity)}`}>
+                    {normalizeSeverity(alert.severity)}
+                  </span>
+                  <span className="alert-hr">HR: {alert.heartRate ?? "--"}</span>
+                  <span className="alert-rr">
+                    RR: {alert.rrIntervalMs == null ? "-- ms" : `${Math.round(alert.rrIntervalMs)} ms`}
+                  </span>
+                </div>
+                <div className="alert-message">{alert.message || "Abnormal ECG event"}</div>
+                {alert.explanationSummary?.trim() ? (
+                  <p className="alert-explanation-summary">{alert.explanationSummary.trim()}</p>
+                ) : null}
+                {alert.recommendedAction?.trim() ? (
+                  <p className="alert-recommended-action">{alert.recommendedAction.trim()}</p>
+                ) : null}
+                {alert.explanationDetails?.trim() ? (
+                  <details className="alert-explanation-details">
+                    <summary className="alert-explanation-summary-trigger">Explanation details</summary>
+                    <p className="alert-explanation-details-body">{alert.explanationDetails.trim()}</p>
+                  </details>
+                ) : null}
                 <span className="alert-rule">{alert.sourceRule || "unknown"}</span>
               </li>
             ))}

@@ -66,7 +66,10 @@ function parseAlert(endpoint: string, raw: unknown): AlertMessage {
         sourceRule: item.sourceRule ?? "unknown",
         heartRate: item.heartRate ?? null,
         rrIntervalMs: item.rrIntervalMs ?? null,
-        metadata: item.metadata ?? null
+        metadata: item.metadata ?? null,
+        explanationSummary: item.explanationSummary ?? null,
+        explanationDetails: item.explanationDetails ?? null,
+        recommendedAction: item.recommendedAction ?? null
     };
 }
 
