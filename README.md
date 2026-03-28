@@ -55,6 +55,8 @@ flowchart LR
 
 ## Quick Start
 
+Use a **separate terminal tab** for each long-running step (Kafka, backend, simulator, frontend). All `cd` paths below assume you start from the **repository root** (`cardioflow-monitor/`). If you are still inside `scripts/kafka`, run `cd ../..` (twice) to get back to the root before `cd simulator/...` or `cd backend/...`.
+
 ### 1) Start Kafka and create topics
 
 ```bash
