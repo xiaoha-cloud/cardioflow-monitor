@@ -358,7 +358,7 @@ Threshold meanings:
 ### `AlertMessage` (normalized)
 
 - Required: `patientId`, `recordId`, `deviceId`, `timestamp`, `sampleIndex`, `severity`, `message`, `sourceRule`
-- Optional: `annotation`, `heartRate`, `rrIntervalMs`, `metadata`, `receivedAt`
+- Optional: `annotation`, `heartRate`, `rrIntervalMs`, `metadata`, `receivedAt`, `explanationSummary`, `explanationDetails`, `recommendedAction` (filled when `Explainer:BaseUrl` is set and the explainer service succeeds)
 
 ### `SystemStatusDto` (core)
 
@@ -376,6 +376,10 @@ Threshold meanings:
 - **Kafka not reachable**
   - verify Docker Kafka containers and topic `ecg.telemetry`
   - check `Kafka:BootstrapServers`
+- **Alerts without explanation fields**
+  - set `Explainer:BaseUrl` (e.g. `http://localhost:8000`) and run `ai/explainer-service`
+  - if `appsettings.Development.json` is gitignored locally, copy `appsettings.Development.sample.json` to `appsettings.Development.json` or merge the `Explainer` section
+  - if the explainer is down, alerts are still stored; explanation fields stay null
 - **No data / empty arrays**
   - replay may not be publishing
   - consumer may be reconnecting

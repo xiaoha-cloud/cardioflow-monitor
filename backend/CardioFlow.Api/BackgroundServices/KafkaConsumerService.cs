@@ -19,6 +19,7 @@ public class KafkaConsumerService : BackgroundService
     private readonly ITelemetryBufferService _bufferService;
     private readonly IAnomalyDetectionService _anomalyDetectionService;
     private readonly IAlertService _alertService;
+    private readonly IAlertExplanationService _alertExplanationService;
     private readonly IStatusAggregationService _statusAggregationService;
     private readonly IHubContext<TelemetryHub> _hubContext;
     private IConsumer<string, string>? _consumer;
@@ -38,6 +39,7 @@ public class KafkaConsumerService : BackgroundService
         ITelemetryBufferService bufferService,
         IAnomalyDetectionService anomalyDetectionService,
         IAlertService alertService,
+        IAlertExplanationService alertExplanationService,
         IStatusAggregationService statusAggregationService,
         IHubContext<TelemetryHub> hubContext)
     {
@@ -46,6 +48,7 @@ public class KafkaConsumerService : BackgroundService
         _bufferService = bufferService;
         _anomalyDetectionService = anomalyDetectionService;
         _alertService = alertService;
+        _alertExplanationService = alertExplanationService;
         _statusAggregationService = statusAggregationService;
         _hubContext = hubContext;
 
@@ -296,12 +299,13 @@ public class KafkaConsumerService : BackgroundService
                     telemetryMessage.SampleIndex);
             }
 
-            // 3) Rule evaluation + 4) Alert store
+            // 3) Rule evaluation + explainer enrichment + 4) Alert store
             try
             {
                 var alerts = _anomalyDetectionService.DetectAlerts(telemetryMessage);
                 foreach (var alert in alerts)
                 {
+                    await _alertExplanationService.TryEnrichAsync(alert, cancellationToken).ConfigureAwait(false);
                     _alertService.AddAlert(alert);
                     _logger.LogInformation(
                         "Alert generated: patientId={PatientId}, recordId={RecordId}, sampleIndex={SampleIndex}, annotation={Annotation}, severity={Severity}, sourceRule={SourceRule}",

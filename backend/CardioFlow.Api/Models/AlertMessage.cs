@@ -83,4 +83,22 @@ public class AlertMessage
     /// </summary>
     [JsonPropertyName("metadata")]
     public Dictionary<string, string>? Metadata { get; set; }
+
+    /// <summary>
+    /// Short dashboard summary from the explainer service (optional).
+    /// </summary>
+    [JsonPropertyName("explanationSummary")]
+    public string? ExplanationSummary { get; set; }
+
+    /// <summary>
+    /// Longer non-diagnostic explanation from the explainer service (optional).
+    /// </summary>
+    [JsonPropertyName("explanationDetails")]
+    public string? ExplanationDetails { get; set; }
+
+    /// <summary>
+    /// Monitoring-oriented suggested follow-up from the explainer service (optional).
+    /// </summary>
+    [JsonPropertyName("recommendedAction")]
+    public string? RecommendedAction { get; set; }
 }
