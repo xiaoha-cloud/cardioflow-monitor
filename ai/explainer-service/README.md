@@ -11,6 +11,12 @@ FastAPI service with optional **LangChain + OpenAI** explanations and **rule-bas
 
 Do not commit API keys. Export in your shell or inject via your host / Kubernetes Secret.
 
+### OpenAI `429` / `insufficient_quota`
+
+If logs show quota or billing errors, the service **still returns 200** with **rule-based** text (LLM is skipped). To fix real LLM calls: add payment method or credits in [OpenAI billing](https://platform.openai.com/account/billing). To avoid noisy API attempts during development, **unset** `OPENAI_API_KEY` so only the rule path runs.
+
+If a key was exposed (terminal history, screenshot, chat), **rotate it** in the OpenAI dashboard and use the new key only via environment variables.
+
 ## Local run
 
 ```bash

@@ -4,6 +4,7 @@ from typing import List, Optional
 
 from langchain_core.prompts import ChatPromptTemplate
 from langchain_openai import ChatOpenAI
+from openai import RateLimitError
 from pydantic import BaseModel, Field
 
 from app.models import AlertInput, ExplanationOutput
@@ -62,6 +63,7 @@ def _invoke_llm(alert: AlertInput) -> ExplanationOutput:
         temperature=0.2,
         api_key=api_key,
         timeout=30,
+        max_retries=0,
     )
     structured_llm = llm.with_structured_output(LlmExplanationPayload)
 
@@ -168,6 +170,12 @@ def generate_explanation(alert: AlertInput) -> ExplanationOutput:
     if os.environ.get("OPENAI_API_KEY", "").strip():
         try:
             return _invoke_llm(alert)
+        except RateLimitError:
+            logger.warning(
+                "OpenAI returned 429 (rate limit or insufficient quota); using rule-based fallback. "
+                "Fix billing at https://platform.openai.com/account/billing or unset OPENAI_API_KEY "
+                "to use rule-based text only."
+            )
         except Exception as exc:
             logger.warning(
                 "LLM explanation failed, using rule-based fallback: %s",
