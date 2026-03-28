@@ -1,6 +1,15 @@
 # CardioFlow explainer service
 
-Rule-based FastAPI service. Specification: [docs/architecture/explainer-service-design.md](../../docs/architecture/explainer-service-design.md)
+FastAPI service with optional **LangChain + OpenAI** explanations and **rule-based fallback**. Specification: [docs/architecture/explainer-service-design.md](../../docs/architecture/explainer-service-design.md)
+
+## Environment variables
+
+| Variable | Required | Description |
+|----------|----------|-------------|
+| `OPENAI_API_KEY` | No | If set, `/explain` uses the configured OpenAI model via LangChain structured output. If unset or empty, responses are rule-based only. |
+| `OPENAI_MODEL` | No | Defaults to `gpt-4o-mini`. |
+
+Do not commit API keys. Export in your shell or inject via your host / Kubernetes Secret.
 
 ## Local run
 
@@ -9,6 +18,7 @@ cd ai/explainer-service
 python3 -m venv venv
 source venv/bin/activate
 pip install -r requirements.txt
+# optional: export OPENAI_API_KEY=sk-...
 uvicorn app.main:app --reload --port 8000
 ```
 
@@ -21,5 +31,7 @@ Build from this directory (context = `ai/explainer-service`):
 
 ```bash
 docker build -t cardioflow-explainer:local .
-docker run --rm -p 8000:8000 cardioflow-explainer:local
+docker run --rm -p 8000:8000 -e OPENAI_API_KEY -e OPENAI_MODEL cardioflow-explainer:local
 ```
+
+Omit `OPENAI_API_KEY` to run in rule-based-only mode inside the container.

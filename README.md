@@ -41,7 +41,7 @@ flowchart LR
 | `backend/CardioFlow.Api/` | ASP.NET Core API, Kafka consumer, REST, SignalR |
 | `frontend/dashboard/` | React + TypeScript + Vite dashboard |
 | `simulator/mitbih-replay/` | Python MIT-BIH replay producer |
-| `ai/explainer-service/` | FastAPI rule-based alert explanation service (`/health`, `/explain`) |
+| `ai/explainer-service/` | FastAPI explainer: LangChain + OpenAI when `OPENAI_API_KEY` is set; else rule-based (`/health`, `/explain`) |
 | `scripts/kafka/` | Docker Compose + topic bootstrap scripts |
 | `docs/` | Architecture notes and screenshots |
 | `docs/architecture/` | Service design documents |
@@ -157,7 +157,7 @@ Baseline for the `feature/llm-k8s-upgrade` workstream:
 - **Frontend** is deployed on **Vercel** (URL in the table above).
 - **Backend** is deployed on **Render** (URL in the table above).
 - **Kafka cloud migration** is in progress (hosted broker and simulator topology are evolving).
-- **AI explanation service** is planned; API contract and boundaries are documented in `docs/architecture/explainer-service-design.md`.
+- **AI explanation service** is implemented (optional OpenAI via LangChain; rule-based fallback). Contract: `docs/architecture/explainer-service-design.md`.
 
 Verify the live API after cold start:
 
