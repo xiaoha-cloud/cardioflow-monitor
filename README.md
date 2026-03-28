@@ -41,7 +41,7 @@ flowchart LR
 | `backend/CardioFlow.Api/` | ASP.NET Core API, Kafka consumer, REST, SignalR |
 | `frontend/dashboard/` | React + TypeScript + Vite dashboard |
 | `simulator/mitbih-replay/` | Python MIT-BIH replay producer |
-| `ai/explainer-service/` | AI alert explanation service (implementation pending) |
+| `ai/explainer-service/` | FastAPI rule-based alert explanation service (`/health`, `/explain`) |
 | `scripts/kafka/` | Docker Compose + topic bootstrap scripts |
 | `docs/` | Architecture notes and screenshots |
 | `docs/architecture/` | Service design documents |
