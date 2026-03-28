@@ -35,6 +35,11 @@ builder.Services.AddSingleton<IAlertRule, RrIntervalRule>();
 builder.Services.AddSingleton<IAnomalyDetectionService, AnomalyDetectionService>();
 builder.Services.AddSingleton<IStatusAggregationService, StatusAggregationService>();
 
+builder.Services.AddHttpClient<IAlertExplanationService, AlertExplanationService>(client =>
+{
+    client.Timeout = TimeSpan.FromSeconds(5);
+});
+
 // Register Kafka Consumer Background Service
 builder.Services.AddHostedService<KafkaConsumerService>();
 
@@ -76,5 +81,8 @@ logger.LogInformation("Kafka Bootstrap Servers: {BootstrapServers}",
     builder.Configuration["Kafka:BootstrapServers"] ?? Environment.GetEnvironmentVariable("KAFKA_BOOTSTRAP_SERVERS") ?? "localhost:9092");
 logger.LogInformation("Kafka Telemetry Topic: {TelemetryTopic}",
     builder.Configuration["Kafka:TelemetryTopic"] ?? "ecg.telemetry");
+logger.LogInformation(
+    "Explainer BaseUrl configured: {Configured}",
+    string.IsNullOrWhiteSpace(builder.Configuration["Explainer:BaseUrl"]) ? "no" : "yes");
 
 app.Run();

@@ -57,6 +57,12 @@ export interface AlertMessage {
     heartRate?: number | null;
     rrIntervalMs?: number | null;
     metadata?: Record<string, string> | null;
+    /** Short line from explainer service (optional). */
+    explanationSummary?: string | null;
+    /** Longer non-diagnostic text from explainer (optional). */
+    explanationDetails?: string | null;
+    /** Monitoring-oriented suggestion from explainer (optional). */
+    recommendedAction?: string | null;
 }
 
 export interface SystemStatus {

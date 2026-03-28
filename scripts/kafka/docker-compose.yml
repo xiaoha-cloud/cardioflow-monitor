@@ -2,8 +2,6 @@
 # Usage: docker compose up -d
 # See docs/kafka-local.md and root README for topic creation and verification.
 
-version: "3.8"
-
 services:
   zookeeper:
     image: confluentinc/cp-zookeeper:7.5.0

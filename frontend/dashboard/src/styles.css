@@ -264,62 +264,99 @@ body {
 }
 
 .alert-item {
-    display: grid;
-    grid-template-columns: 96px 48px 78px 64px 92px;
-    grid-template-areas:
-        "time annotation severity hr rr"
-        "message message message message message"
-        "rule rule rule rule rule";
-    gap: 8px;
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
     padding: 8px;
     border-radius: 8px;
     background: #f9fafb;
-    align-items: center;
     font-size: 12px;
 }
 
+.alert-item-meta {
+    display: grid;
+    grid-template-columns: 96px 48px 78px 64px 92px;
+    gap: 8px;
+    align-items: center;
+}
+
 .alert-time {
-    grid-area: time;
     color: #6b7280;
     font-variant-numeric: tabular-nums;
 }
 
 .alert-annotation {
-    grid-area: annotation;
     font-weight: 600;
     text-align: center;
 }
 
 .alert-message {
-    grid-area: message;
     white-space: normal;
     overflow-wrap: anywhere;
     line-height: 1.35;
+    font-weight: 600;
+    color: #111827;
+}
+
+.alert-explanation-summary {
+    margin: 0;
+    line-height: 1.4;
+    color: #374151;
+    font-size: 12px;
+}
+
+.alert-recommended-action {
+    margin: 0;
+    line-height: 1.4;
+    color: #4b5563;
+    font-size: 11px;
+    font-style: italic;
+}
+
+.alert-explanation-details {
+    margin: 0;
+    border-radius: 6px;
+    background: #f3f4f6;
+    padding: 4px 8px;
+}
+
+.alert-explanation-summary-trigger {
+    cursor: pointer;
+    font-size: 11px;
+    font-weight: 600;
+    color: #2563eb;
+    user-select: none;
+}
+
+.alert-explanation-details-body {
+    margin: 6px 0 0;
+    padding: 0;
+    line-height: 1.45;
+    color: #374151;
+    font-size: 11px;
+    white-space: normal;
+    overflow-wrap: anywhere;
 }
 
 .alert-rule {
-    grid-area: rule;
     color: #6b7280;
     font-size: 11px;
     font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
 }
 
 .alert-hr {
-    grid-area: hr;
     color: #6b7280;
     text-align: right;
     font-variant-numeric: tabular-nums;
 }
 
 .alert-rr {
-    grid-area: rr;
     color: #6b7280;
     text-align: right;
     font-variant-numeric: tabular-nums;
 }
 
 .severity-tag {
-    grid-area: severity;
     display: inline-flex;
     align-items: center;
     justify-content: center;

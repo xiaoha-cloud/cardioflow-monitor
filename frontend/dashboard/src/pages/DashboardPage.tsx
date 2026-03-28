@@ -62,7 +62,10 @@ function normalizeAlert(alert: AlertMessage): AlertMessage {
     message: alert.message || "Abnormal ECG event",
     sourceRule: alert.sourceRule || "unknown",
     recordId: alert.recordId || "-",
-    annotation: alert.annotation ?? null
+    annotation: alert.annotation ?? null,
+    explanationSummary: alert.explanationSummary ?? null,
+    explanationDetails: alert.explanationDetails ?? null,
+    recommendedAction: alert.recommendedAction ?? null
   };
 }
 

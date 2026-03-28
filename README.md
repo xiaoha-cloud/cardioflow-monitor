@@ -41,8 +41,10 @@ flowchart LR
 | `backend/CardioFlow.Api/` | ASP.NET Core API, Kafka consumer, REST, SignalR |
 | `frontend/dashboard/` | React + TypeScript + Vite dashboard |
 | `simulator/mitbih-replay/` | Python MIT-BIH replay producer |
+| `ai/explainer-service/` | FastAPI explainer: LangChain + OpenAI when `OPENAI_API_KEY` is set; else rule-based (`/health`, `/explain`) |
 | `scripts/kafka/` | Docker Compose + topic bootstrap scripts |
 | `docs/` | Architecture notes and screenshots |
+| `docs/architecture/` | Service design documents |
 
 ## Prerequisites
 
@@ -52,6 +54,8 @@ flowchart LR
 - Python 3.8+
 
 ## Quick Start
+
+Use a **separate terminal tab** for each long-running step (Kafka, backend, simulator, frontend). All `cd` paths below assume you start from the **repository root** (`cardioflow-monitor/`). If you are still inside `scripts/kafka`, run `cd ../..` (twice) to get back to the root before `cd simulator/...` or `cd backend/...`.
 
 ### 1) Start Kafka and create topics
 
@@ -97,6 +101,17 @@ npm run dev
 ```
 
 Frontend default URL: [http://localhost:5173](http://localhost:5173)
+
+### 5) Explainer service (alert summaries on the dashboard)
+
+So **Recent Alerts** show explanation text, run the explainer on port **8000** and set the backend `Explainer:BaseUrl` to `http://localhost:8000` (see `backend/CardioFlow.Api/appsettings.Development.sample.json`). Example with Docker from repo root:
+
+```bash
+docker build -t cardioflow-explainer -f ai/explainer-service/Dockerfile .
+docker run --rm -p 8000:8000 cardioflow-explainer
+```
+
+Optional: pass `-e OPENAI_API_KEY` (and `OPENAI_MODEL`) for LLM output. Full steps: [ai/explainer-service/README.md](ai/explainer-service/README.md).
 
 ## CI/CD
 
@@ -145,11 +160,26 @@ Required or optional keys used by workflows:
 
 | Service | URL |
 |---|---|
-| 🖥️ Frontend (Vercel) | [https://cardioflow-monitor-gcqv.vercel.app](https://cardioflow-monitor-gcqv.vercel.app) |
-| ⚙️ Backend API (Render) | [https://cardioflow-monitor-1.onrender.com](https://cardioflow-monitor-1.onrender.com) |
+| Frontend (Vercel) | [https://cardioflow-monitor-gcqv.vercel.app](https://cardioflow-monitor-gcqv.vercel.app) |
+| Backend API (Render) | [https://cardioflow-monitor-1.onrender.com](https://cardioflow-monitor-1.onrender.com) |
+
+## Current deployment snapshot
+
+Baseline for the `feature/llm-k8s-upgrade` workstream:
+
+- **Frontend** is deployed on **Vercel** (URL in the table above).
+- **Backend** is deployed on **Render** (URL in the table above).
+- **Kafka cloud migration** is in progress (hosted broker and simulator topology are evolving).
+- **AI explanation service** is implemented (optional OpenAI via LangChain; rule-based fallback). Contract: `docs/architecture/explainer-service-design.md`.
+
+Verify the live API after cold start:
+
+```bash
+curl -sS "https://cardioflow-monitor-1.onrender.com/api/system/status"
+```
 
 > **Note:** The backend runs on Render's free tier and may take ~50 seconds to wake up after inactivity.
-> Current scope: frontend on Vercel, backend on Render (simulator remains local — no live Kafka feed).
+> Current scope: frontend on Vercel, backend on Render (simulator may remain local or move to a worker — live Kafka feed depends on your cloud setup).
 
 ## Frontend Environment Variables
 
