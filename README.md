@@ -41,8 +41,10 @@ flowchart LR
 | `backend/CardioFlow.Api/` | ASP.NET Core API, Kafka consumer, REST, SignalR |
 | `frontend/dashboard/` | React + TypeScript + Vite dashboard |
 | `simulator/mitbih-replay/` | Python MIT-BIH replay producer |
+| `ai/explainer-service/` | AI alert explanation service (implementation pending) |
 | `scripts/kafka/` | Docker Compose + topic bootstrap scripts |
 | `docs/` | Architecture notes and screenshots |
+| `docs/architecture/` | Service design documents |
 
 ## Prerequisites
 
@@ -145,11 +147,26 @@ Required or optional keys used by workflows:
 
 | Service | URL |
 |---|---|
-| 🖥️ Frontend (Vercel) | [https://cardioflow-monitor-gcqv.vercel.app](https://cardioflow-monitor-gcqv.vercel.app) |
-| ⚙️ Backend API (Render) | [https://cardioflow-monitor-1.onrender.com](https://cardioflow-monitor-1.onrender.com) |
+| Frontend (Vercel) | [https://cardioflow-monitor-gcqv.vercel.app](https://cardioflow-monitor-gcqv.vercel.app) |
+| Backend API (Render) | [https://cardioflow-monitor-1.onrender.com](https://cardioflow-monitor-1.onrender.com) |
+
+## Current deployment snapshot
+
+Baseline for the `feature/llm-k8s-upgrade` workstream:
+
+- **Frontend** is deployed on **Vercel** (URL in the table above).
+- **Backend** is deployed on **Render** (URL in the table above).
+- **Kafka cloud migration** is in progress (hosted broker and simulator topology are evolving).
+- **AI explanation service** is planned; API contract and boundaries are documented in `docs/architecture/explainer-service-design.md`.
+
+Verify the live API after cold start:
+
+```bash
+curl -sS "https://cardioflow-monitor-1.onrender.com/api/system/status"
+```
 
 > **Note:** The backend runs on Render's free tier and may take ~50 seconds to wake up after inactivity.
-> Current scope: frontend on Vercel, backend on Render (simulator remains local — no live Kafka feed).
+> Current scope: frontend on Vercel, backend on Render (simulator may remain local or move to a worker — live Kafka feed depends on your cloud setup).
 
 ## Frontend Environment Variables
 
