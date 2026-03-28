@@ -27,11 +27,17 @@ uvicorn app.main:app --reload --port 8000
 
 ## Docker
 
-Build from this directory (context = `ai/explainer-service`):
+Build from the **repository root** (same pattern as the backend image):
 
 ```bash
-docker build -t cardioflow-explainer:local .
-docker run --rm -p 8000:8000 -e OPENAI_API_KEY -e OPENAI_MODEL cardioflow-explainer:local
+docker build -t cardioflow-explainer -f ai/explainer-service/Dockerfile .
+docker run --rm -p 8000:8000 cardioflow-explainer
 ```
 
-Omit `OPENAI_API_KEY` to run in rule-based-only mode inside the container.
+Optional LLM inside the container:
+
+```bash
+docker run --rm -p 8000:8000 -e OPENAI_API_KEY -e OPENAI_MODEL cardioflow-explainer
+```
+
+Omit `OPENAI_API_KEY` to run in rule-based-only mode.
