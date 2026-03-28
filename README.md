@@ -100,6 +100,17 @@ npm run dev
 
 Frontend default URL: [http://localhost:5173](http://localhost:5173)
 
+### 5) Explainer service (alert summaries on the dashboard)
+
+So **Recent Alerts** show explanation text, run the explainer on port **8000** and set the backend `Explainer:BaseUrl` to `http://localhost:8000` (see `backend/CardioFlow.Api/appsettings.Development.sample.json`). Example with Docker from repo root:
+
+```bash
+docker build -t cardioflow-explainer -f ai/explainer-service/Dockerfile .
+docker run --rm -p 8000:8000 cardioflow-explainer
+```
+
+Optional: pass `-e OPENAI_API_KEY` (and `OPENAI_MODEL`) for LLM output. Full steps: [ai/explainer-service/README.md](ai/explainer-service/README.md).
+
 ## CI/CD
 
 ### CI workflow

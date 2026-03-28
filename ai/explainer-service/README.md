@@ -41,3 +41,26 @@ docker run --rm -p 8000:8000 -e OPENAI_API_KEY -e OPENAI_MODEL cardioflow-explai
 ```
 
 Omit `OPENAI_API_KEY` to run in rule-based-only mode.
+
+## See explanations in the React dashboard (local)
+
+The UI shows `explanationSummary`, `explanationDetails`, and `recommendedAction` only when the **backend** enriches alerts by calling the explainer. Use this order:
+
+1. **Explainer** (Docker on the host maps port 8000):
+   ```bash
+   # from repo root
+   docker run --rm -p 8000:8000 -e OPENAI_API_KEY -e OPENAI_MODEL cardioflow-explainer
+   ```
+   Omit `-e OPENAI_API_KEY` if you only want rule-based text inside the container.
+
+2. **Backend** on the host must point at that service. In `appsettings.Development.json` (or merge from `appsettings.Development.sample.json`):
+   ```json
+   "Explainer": { "BaseUrl": "http://localhost:8000" }
+   ```
+   Run: `cd backend/CardioFlow.Api && dotnet run --urls http://localhost:5050`
+
+3. **Kafka + simulator** so new alerts are produced (same as the main README Quick Start): `scripts/kafka` compose, then `replay.py` for the record matching the dashboard selector (`100` / `101` / `103`).
+
+4. **Frontend**: `cd frontend/dashboard && npm run dev` — default `VITE_API_BASE_URL` is `http://localhost:5050`, so open **http://localhost:5173** and watch **Recent Alerts** (REST + SignalR).
+
+If the explainer is down or `Explainer:BaseUrl` is empty, alerts still appear but without the extra explanation lines.
